@@ -18,9 +18,11 @@ void error_handling(char *msg);
 char *server_state(int count);
 void show_info(char port[]);
 
+int reuse_opt = 1;
 int client_cnt = 0;
 int client_sockets[MAX_CLIENT_NUM];
 pthread_mutex_t mutex;
+
 
 int main(int argc, char *argv[])
 {
@@ -54,6 +56,12 @@ int main(int argc, char *argv[])
     // 2. Socket Type = { SOCK_STREAM(연결형. TCP.), SOCK_DGRAM(비연결형. UDP.), SOCK_RAW }
     // 3. Protocol = TCP/UDP경우 0을 넣어도 됨. Raw socket의 경우나 프로토콜이 여러개로 나눠지는 경우 사용
 
+
+    /* 현재 사용중인 IP주소와 포트번호 재사용
+    서버 종료 후 재 실행시 bind() error 방지*/
+    setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &reuse_opt, sizeof(reuse_opt));
+
+
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -80,10 +88,10 @@ int main(int argc, char *argv[])
 
         pthread_create(&t_id, NULL, handle_cilent, (void *)&client_socket);
         pthread_detach(t_id);
-        printf(" Connceted client IP : %s ", inet_ntoa(client_addr.sin_addr));
-        printf("(%d-%d-%d %d:%d)\n", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
-               t->tm_hour, t->tm_min);
-        printf(" (현재 인원: %d명)\n", client_cnt);
+        printf("Connceted client IP : %s ", inet_ntoa(client_addr.sin_addr));
+        printf("(%d-%d-%d %02d:%02d:%02d)\n", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+               t->tm_hour + 9, t->tm_min + 1, t->tm_sec + 1);
+        printf("<현재 인원: %d명>\n", client_cnt);
     }
     close(server_socket);
     return 0;
@@ -92,11 +100,11 @@ int main(int argc, char *argv[])
 void *handle_cilent(void *arg)
 {
     int client_socket = *((int *)arg);
-    int str_len = 0, i;
+    int i, str_len = 0;
     char msg[MSG_LEN_LIMIT];
 
     while ((str_len = read(client_socket, msg, sizeof(msg))) != 0)
-        send_msg(msg, str_len);
+    send_msg(msg, str_len);
 
     // remove disconnected client
     pthread_mutex_lock(&mutex);
@@ -115,6 +123,7 @@ void *handle_cilent(void *arg)
     return NULL;
 }
 
+
 void send_msg(char *msg, int len)
 {
     int i;
@@ -124,12 +133,14 @@ void send_msg(char *msg, int len)
     pthread_mutex_unlock(&mutex);
 }
 
+
 void error_handling(char *msg)
 {
     fputs(msg, stderr);
     fputc('\n', stderr);
     exit(1);
 }
+
 
 char *server_state(int count)
 {
@@ -144,6 +155,7 @@ char *server_state(int count)
     return stateMsg;
 }
 
+
 void show_info(char port[])
 {
     // system("clear");
@@ -153,6 +165,13 @@ void show_info(char port[])
     printf(" Max num of client      = %d\n", MAX_CLIENT_NUM);
     printf("└──────────────────────────────────────┘\n\n");
 }
+
+
+
+
+
+
+
 
 // #include <stdio.h>
 // #include <stdlib.h>

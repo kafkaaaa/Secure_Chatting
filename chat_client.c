@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
     struct tm *t;
     time_t timer = time(NULL);
     t = localtime(&timer);
-    sprintf(server_time, "%d/%d/%d  %2d:%2d:%2d",
+    sprintf(server_time, "%d/%d/%d  %2d:%2d:%02d",
         t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour + 9, t->tm_min + 1, t->tm_sec + 1);
 
     sprintf(name, "%s", argv[3]);
@@ -71,6 +71,7 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+
 void *send_msg(void *arg)
 {
     int sock = *((int *)arg);
@@ -87,8 +88,10 @@ void *send_msg(void *arg)
     {
         fgets(msg, MSG_LEN_LIMIT, stdin);
 
-        if (!strcmp(msg, "q\n") || !strcmp(msg, "Q\n"))
+        // 채팅방 나감(종료) 처리
+        if (strcmp(msg, "q\n") == 0 || strcmp(msg, "Q\n") == 0)
         {
+            // printf("[name]")
             close(sock);
             exit(0);
         }
@@ -131,6 +134,9 @@ void show_info()
     printf("채팅 종료 -> q & Q 입력 후 엔터\n\n");
     // TODO: 기능 추가 #1. 채팅 메시지 전송시 AES 암/복화
     // TODO: 기능 추가 #2. 채팅 로그 파일로 저장
+    
+    // TODO: 한 사용자(client)가 채팅방을 나갔을 때 메시지 표시하기 (현재 인원도 다시 카운팅)
+    // 
 }
 
 
@@ -140,7 +146,6 @@ void error_handling(char *msg)
     fputc('\n', stderr);
     exit(1);
 }
-
 
 
 
@@ -159,31 +164,31 @@ void error_handling(char *msg)
 
 // #define  BUFF_SIZE   1024
 
-// int   main( int argc, char **argv)
+// int   main(int argc, char **argv)
 // {
 //    int   client_socket;
 //    struct sockaddr_in   server_addr;
 //    char   buff[BUFF_SIZE+5];
 
-//    client_socket  = socket( PF_INET, SOCK_STREAM, 0);
-//    if( -1 == client_socket){
+//    client_socket  = socket(PF_INET, SOCK_STREAM, 0);
+//    if(-1 == client_socket){
 //       printf( "socket 생성 실패\n");
 //       exit( 1);
 //    }
-//    memset( &server_addr, 0, sizeof( server_addr));
+//    memset(&server_addr, 0, sizeof(server_addr));
 //    server_addr.sin_family     = AF_INET;
 //    server_addr.sin_port       = htons( 4000);
-//    server_addr.sin_addr.s_addr= inet_addr( "127.0.0.1");
+//    server_addr.sin_addr.s_addr= inet_addr("127.0.0.1");
 
-//    if( -1 == connect( client_socket, (struct sockaddr*)&server_addr,
-//                                   sizeof( server_addr) ) ){
+//    if(-1 == connect(client_socket, (struct sockaddr*)&server_addr,
+//                                   sizeof(server_addr) ) ){
 //       printf( "접속 실패\n");
 //       exit( 1);
 //    }
-//    write( client_socket, argv[1], strlen( argv[1])+1);      // +1: NULL까지 포함해서 전송
-//    read ( client_socket, buff, BUFF_SIZE);
-//    printf( "%s\n", buff);
-//    close( client_socket);
+//    write(client_socket, argv[1], strlen(argv[1])+1);      // +1: NULL까지 포함해서 전송
+//    read (client_socket, buff, BUFF_SIZE);
+//    printf("%s\n", buff);
+//    close(client_socket);
 
 //    return 0;
 // }
