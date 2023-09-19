@@ -49,7 +49,8 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
 
     show_info(argv[1]);
 
-    pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&mutex, NULL);   // Mutex 초기화
+
     server_socket = socket(PF_INET, SOCK_STREAM, 0);
     // socket( ): 소켓 생성
     // socket( 1. Domain(=Protocol family) / 2. Socket type / 3. Protocol )
@@ -86,9 +87,9 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
         client_addr_len = sizeof(client_addr);
         client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_len);
 
-        pthread_mutex_lock(&mutex);
+        pthread_mutex_lock(&mutex);     // critical section lock
         client_sockets[client_cnt++] = client_socket;
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&mutex);   // critical section unlock
 
         pthread_create(&t_id, NULL, handle_cilent, (void *)&client_socket);
         pthread_detach(t_id);
