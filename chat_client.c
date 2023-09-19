@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
 
     if (argc != 4)
     {
-        printf("ex) ./a.out [IP] [PORT] [NAME]\n");
+        printf("ex) ./client [IP] [PORT] [NAME]\n");
         printf("ex) ./client 192.168.0.1 8080 홍길동\n");
         exit(1);
     }
@@ -44,7 +44,7 @@ int main(int argc, char *argv[])
     time_t timer = time(NULL);
     t = localtime(&timer);
     sprintf(server_time, "%d/%d/%d  %2d:%2d:%02d",
-        t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour + 9, t->tm_min + 1, t->tm_sec + 1);
+        t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour + 9, t->tm_min, t->tm_sec);    // korea -> (UTC + 09:00)
 
     sprintf(name, "%s", argv[3]);
     sprintf(client_ip, "%s", argv[1]);
@@ -131,7 +131,7 @@ void show_info()
         printf(" Current Time : %s \n", server_time);
 
     printf("└────────────────────────────────────────┘\n");
-    printf("채팅 종료 -> q & Q 입력 후 엔터\n\n");
+    printf("채팅을 종료하려면 q를 입력하세요\n\n");
     // TODO: 기능 추가 #1. 채팅 메시지 전송시 AES 암/복화
     // TODO: 기능 추가 #2. 채팅 로그 파일로 저장
     
@@ -147,48 +147,3 @@ void error_handling(char *msg)
     exit(1);
 }
 
-
-
-
-
-
-
-
-// #include <stdio.h>
-// #include <stdlib.h>
-// #include <string.h>
-// #include <unistd.h>
-// #include <arpa/inet.h>
-// #include <sys/types.h>
-// #include <sys/socket.h>
-
-// #define  BUFF_SIZE   1024
-
-// int   main(int argc, char **argv)
-// {
-//    int   client_socket;
-//    struct sockaddr_in   server_addr;
-//    char   buff[BUFF_SIZE+5];
-
-//    client_socket  = socket(PF_INET, SOCK_STREAM, 0);
-//    if(-1 == client_socket){
-//       printf( "socket 생성 실패\n");
-//       exit( 1);
-//    }
-//    memset(&server_addr, 0, sizeof(server_addr));
-//    server_addr.sin_family     = AF_INET;
-//    server_addr.sin_port       = htons( 4000);
-//    server_addr.sin_addr.s_addr= inet_addr("127.0.0.1");
-
-//    if(-1 == connect(client_socket, (struct sockaddr*)&server_addr,
-//                                   sizeof(server_addr) ) ){
-//       printf( "접속 실패\n");
-//       exit( 1);
-//    }
-//    write(client_socket, argv[1], strlen(argv[1])+1);      // +1: NULL까지 포함해서 전송
-//    read (client_socket, buff, BUFF_SIZE);
-//    printf("%s\n", buff);
-//    close(client_socket);
-
-//    return 0;
-// }
