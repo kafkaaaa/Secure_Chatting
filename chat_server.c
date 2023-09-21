@@ -1,29 +1,16 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
+#include "chat.h"
 #include <netinet/in.h>
-#include <pthread.h>
-#include <time.h>
-
-#define MSG_LEN_LIMIT 100
-#define MAX_CLIENT_NUM 100
-#define MAX_IP 30
 
 void *handle_cilent(void *arg);
 void send_msg(char *msg, int len);
 void error_handling(char *msg);
 char *server_state(int count);
-void show_info(char port[]);
+void print_server_info(char port[]);
 
-int reuse_opt = 1;
-int client_cnt = 0;
 int client_sockets[MAX_CLIENT_NUM];
+int client_cnt;
 pthread_mutex_t mutex;
-
-
+struct tm *t;
 
 int main(int argc, char *argv[])    // argc= argument count,   argv= argument value
 {
@@ -35,21 +22,21 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
     int client_addr_len;
     pthread_t t_id;
 
-    /** time log **/
-    struct tm *t;
-    time_t timer = time(NULL);
-    t = localtime(&timer);
+    // struct tm *t;
+    // time_t timer = time(NULL);
+    // t = localtime(&timer);
 
     if (argc != 2)
     {
-        printf("ex) ./a.out [PORT]\n");
+        printf("ex) ./server [PORT]\n");
         printf("ex) ./server 8080\n");
         exit(1);
     }
 
-    show_info(argv[1]);
+    print_server_info(argv[1]);
 
-    pthread_mutex_init(&mutex, NULL);   // Mutex 초기화
+    // Mutex는 화장실이 1개 있는 상황과 비슷하다.
+    pthread_mutex_init(&mutex, NULL);
 
     server_socket = socket(PF_INET, SOCK_STREAM, 0);
     // socket( ): 소켓 생성
@@ -64,8 +51,8 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
     이 때 최대 segment 수명의 2배를 기다린 후 CLOSED 상태로 전환된다. 따라서 서버가 연결을 종료하고
     바로 다시 실행하면 소켓이 Time-wait 상태에 있는 동안은 해당 PORT번호는 사용중이므로 bind error가 발생한다.
     https://url.kr/ia5gxb */
+    int reuse_opt = 1;
     setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &reuse_opt, sizeof(reuse_opt));
-
 
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
@@ -83,24 +70,30 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
 
     while (1)
     {
+        time_t timer = time(NULL);
         t = localtime(&timer);
         client_addr_len = sizeof(client_addr);
         client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_len);
 
-        pthread_mutex_lock(&mutex);     // critical section lock
+        pthread_mutex_lock(&mutex);
         client_sockets[client_cnt++] = client_socket;
-        pthread_mutex_unlock(&mutex);   // critical section unlock
+        pthread_mutex_unlock(&mutex);
 
         pthread_create(&t_id, NULL, handle_cilent, (void *)&client_socket);
         pthread_detach(t_id);
-        printf("Connceted client IP : %s ", inet_ntoa(client_addr.sin_addr));
+
+        // inet_nota  = IPv4 -> ASCII
+        printf("[Connected] client(%s)   ", inet_ntoa(client_addr.sin_addr));
         printf("(%d-%d-%d %02d:%02d:%02d)\n", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
-               t->tm_hour + 9, t->tm_min, t->tm_sec + 1);
-        printf("<현재 인원: %d명>\n", client_cnt);
+                                              t->tm_hour + 9,    t->tm_min,     t->tm_sec);
+                                              
+        printf("<현재 인원: %d/%d명>\n\n", client_cnt, MAX_CLIENT_NUM);
     }
+
     close(server_socket);
     return 0;
 }
+
 
 void *handle_cilent(void *arg)
 {
@@ -117,8 +110,9 @@ void *handle_cilent(void *arg)
     {
         if (client_socket == client_sockets[i])
         {
-            while (i++ < client_cnt - 1)
+            while (i++ < client_cnt - 1) {
                 client_sockets[i] = client_sockets[i + 1];
+            }
             break;
         }
     }
@@ -147,23 +141,21 @@ void error_handling(char *msg)
 }
 
 
-char *server_state(int count)
+char* server_state(int count)
 {
-    char *stateMsg = malloc(sizeof(char) * 20);
-    strcpy(stateMsg, "None");
+    char *state = calloc(7, sizeof(char));
+    strcpy(state, "Vacant");
 
-    if (count < 5)
-        strcpy(stateMsg, "Good");
-    else
-        strcpy(stateMsg, "Bad");
+    if (count < MAX_CLIENT_NUM * 0.5) strcpy(state, "Good");
+    else if (count < MAX_CLIENT_NUM * 0.7) strcpy(state, "So so");
+    else strcpy(state, "Bad");
 
-    return stateMsg;
+    return state;
 }
 
 
-void show_info(char port[])
+void print_server_info(char* port)
 {
-    // system("clear");
     printf("┌────────── Chat Server Info ──────────┐\n");
     printf(" Port num of Server     = %s\n", port);
     printf(" State of Server        = %s\n", server_state(client_cnt));

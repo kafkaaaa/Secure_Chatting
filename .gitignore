@@ -1,1 +1,5 @@
-
+server
+client
+.vscode/settings.json
+socket_server.c
+.gitignore

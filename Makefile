@@ -9,10 +9,10 @@ all : server client
 
 TARGET = server client
 
-server : chat_server.c
+server : chat_server.c chat.h
 	$(CC) $(CFLAGS) -o server $^ $(LDFLAGS)
 
-client : chat_client.c
+client : chat_client.c chat.h
 	$(CC) $(CFLAGS) -o client $^ $(LDFLAGS)
 
 clean :
