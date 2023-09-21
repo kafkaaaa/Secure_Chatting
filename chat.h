@@ -7,7 +7,7 @@
 #include <sys/socket.h>
 #include <pthread.h>
 #include <time.h>
-#include "Base64.c"
+#include "base64.h"
 
 #define MSG_LEN_LIMIT 100
 #define LEN_LIMIT 20

@@ -33,10 +33,10 @@ int main(int argc, char *argv[])
     }
 
 
-    // time_t timer = time(NULL);
-    // t = localtime(&timer);
-    // sprintf(current_time, "%d/%d/%d  %02d:%02d:%02d",
-    //     t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour + 9, t->tm_min, t->tm_sec);
+    time_t timer = time(NULL);
+    t = localtime(&timer);
+    sprintf(current_time, "%d/%d/%d  %02d:%02d:%02d", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+                                                      t->tm_hour + 9,    t->tm_min,     t->tm_sec);
 
     sprintf(client_ip,      "%s", argv[1]);
     sprintf(server_port,    "%s", argv[2]);
@@ -67,10 +67,11 @@ int main(int argc, char *argv[])
 void *send_msg(void *arg)
 {
     int sock = *((int *)arg);
-    char dialog_msg[MSG_LEN_LIMIT + LEN_LIMIT + 5];
+    char dialog_msg[200];
     char entrance_msg[MSG_LEN_LIMIT];
     char exit_msg[MSG_LEN_LIMIT];
 
+    // 처음 입장시 메시지
     printf("┌───────────── Eglobal Talk ─────────────┐\n");
     make_entrance_msg(entrance_msg);
     write(sock, entrance_msg, strlen(entrance_msg));
@@ -91,8 +92,22 @@ void *send_msg(void *arg)
             exit(0);
         }
 
-        /* (일반 대화)메시지 전송 */
-        sprintf(dialog_msg, "[%s]: %s", name, msg);
+        /* 일반 대화 메시지 전송 */
+        char encoded_msg[128] = {0, };
+        // 1. Base64 Encoding
+        // printf("\n----- Base64 Encoding -----\n");
+        // printf("[TEST] Origin String = %s\n", msg);
+        base64_encoder(msg, strlen(msg), encoded_msg, sizeof(encoded_msg)/sizeof(char));
+        // printf("[TEST] Base64 String = %s\n", encoded_msg);
+
+
+        sprintf(dialog_msg, "[%s]: %s\n", name, encoded_msg);
+
+
+        // TODO: 2. AES Encryption
+
+
+
         write(sock, dialog_msg, strlen(dialog_msg));
     }
 
@@ -116,6 +131,7 @@ void *recv_msg(void *arg)
     }
     return NULL;
 }
+
 
 /* client 정보 출력 */
 void print_client_info()
@@ -173,7 +189,7 @@ void make_exit_msg(char* exit_msg)
     char* temp = (char*) calloc(MSG_LEN_LIMIT, sizeof(char));
 
     strcat(exit_msg, exit_msg_font);
-    sprintf(temp, "※ [%s] (%s)님이 퇴장하셨습니다.", name, client_ip);
+    sprintf(temp, "\n※ [%s] (%s)님이 퇴장하셨습니다.", name, client_ip);
     strcat(exit_msg, temp);
 
     // add current time 
