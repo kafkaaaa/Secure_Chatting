@@ -70,8 +70,6 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
 
     while (1)
     {
-        time_t timer = time(NULL);
-        t = localtime(&timer);
         client_addr_len = sizeof(client_addr);
         client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_len);
 
@@ -84,6 +82,9 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
 
         // inet_nota  = IPv4 -> ASCII
         printf("[Connected] client(%s)   ", inet_ntoa(client_addr.sin_addr));
+        
+        time_t timer = time(NULL);
+        t = localtime(&timer);
         printf("(%d-%d-%d %02d:%02d:%02d)\n", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
                                               t->tm_hour + 9,    t->tm_min,     t->tm_sec);
                                               
