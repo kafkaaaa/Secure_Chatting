@@ -7,12 +7,21 @@
 #include <sys/socket.h>
 #include <pthread.h>
 #include <time.h>
+#include "AES.h"
+#include "pkcs7_padding.h"
 #include "base64.h"
 
-#define MSG_LEN_LIMIT 100
+
+#define MSG_LEN_LIMIT 128
 #define LEN_LIMIT 20
 #define MAX_CLIENT_NUM 100
 #define MAX_IP 30
+#define IV_LEN 16
+
+
+const uint8_t iv[IV_LEN] = {0x65, 0x67, 0x6c, 0x6f, 0x62, 0x61, 0x6c, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x6d, 0x0d, 0x0a};
+const char* key = "eglobalsystemeglobalsystem";
+
 
 struct tm *t;
 extern int client_cnt;

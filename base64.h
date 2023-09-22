@@ -1,13 +1,11 @@
 #include <stdint.h>
 #include <string.h>
 
-
 int text_to_base64_size(const char *text);
 int base64code_size(const char *code, int len); // 유효한 Base64 코드의 길이를 반환
-int base64_to_text_size(const char *code,int len);
+int base64_to_text_size(const char *code, int len);
 int base64_encoder(char *in, int in_size, char *out, int out_size);
 int base64_decoder(const char *in, int in_size, char *out, int out_size);
-
 
 // /*------ Base64 Encoding Table ------*/
 // const char MimeBase64[] = {
@@ -40,7 +38,6 @@ int base64_decoder(const char *in, int in_size, char *out, int out_size);
 //     -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,  /* E0-EF */
 //     -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1   /* F0-FF */
 // };
-
 
 // int base64_encode(char *text, int numBytes, char **encodedText);
 // int base64_decode(char *text, uint8_t *dst, int numBytes);

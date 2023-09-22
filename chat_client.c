@@ -6,6 +6,7 @@ void error_handling(char *msg);
 void print_client_info();
 void make_entrance_msg(char* msg);
 void make_exit_msg(char* msg);
+void encrypt_msg(uint8_t plain[], uint8_t result[]);
 
 char name[LEN_LIMIT];
 char server_port[LEN_LIMIT];
@@ -92,21 +93,27 @@ void *send_msg(void *arg)
             exit(0);
         }
 
-        /* 일반 대화 메시지 전송 */
-        char encoded_msg[128] = {0, };
-        // 1. Base64 Encoding
-        // printf("\n----- Base64 Encoding -----\n");
-        // printf("[TEST] Origin String = %s\n", msg);
-        base64_encoder(msg, strlen(msg), encoded_msg, sizeof(encoded_msg)/sizeof(char));
-        // printf("[TEST] Base64 String = %s\n", encoded_msg);
 
 
-        sprintf(dialog_msg, "[%s]: %s\n", name, encoded_msg);
+        /* 일반 대화 메시지 전송(+암호화) 작업 */
+        /* plain text -> #1. AES-256 encrypt -> Binary data -> #2. Base64 encoding */
+
+        // TODO: #1. AES-256 encrypt
+        uint8_t* encrypted_msg = (uint8_t*) calloc(MSG_LEN_LIMIT, sizeof(uint8_t));
+        encrypt_msg(msg, encrypted_msg);
 
 
-        // TODO: 2. AES Encryption
+        // // TODO: 2. Base64 Encoding
+        // char encoded_msg[MSG_LEN_LIMIT] = {0, };
+        // // printf("----- Base64 Encoding -----\n");
+        // // printf("[TEST] Encoding target = %s\n", encrypted_msg);
+        // base64_encoder(encrypted_msg, MSG_LEN_LIMIT, encoded_msg, MSG_LEN_LIMIT);
+        // // printf("[TEST] Base64 result = %s\n", encoded_msg);
 
 
+
+        sprintf(dialog_msg, "[%s]: %s\n", name, encrypted_msg);
+        // sprintf(dialog_msg, "[%s]: %s\n", name, encoded_msg);
 
         write(sock, dialog_msg, strlen(dialog_msg));
     }
@@ -145,13 +152,12 @@ void print_client_info()
     printf("└────────────────────────────────────────┘\n");
     printf("채팅방을 나가시려면 X를 눌러 조의를 표하십시오..\n\n");
 
-    // TODO: 기능 추가 #1. 채팅 메시지 전송시 AES 암/복화
-
-    // TODO: 기능 추가 #2. 채팅 로그 파일로 저장
+    // TODO: 기능 추가 #1. 채팅 로그 파일로 저장
     
-    // TODO: 한 사용자(client)가 채팅방을 나갔을 때 메시지 표시하기 (현재 인원도 다시 카운팅)
+    // TODO: 수정 #1. 한 사용자(client)가 채팅방을 나갔을 때 현재 인원도 다시 카운팅해서 출력 (서버에)
     
 }
+
 
 /* 에러 처리 */
 void error_handling(char *msg)
@@ -180,6 +186,7 @@ void make_entrance_msg(char* entrance_msg)
 
     strcat(entrance_msg, current_time);
     strcat(entrance_msg, reset_font);
+    strcat(entrance_msg, "\n");
 }
 
 
@@ -200,5 +207,88 @@ void make_exit_msg(char* exit_msg)
 
     strcat(exit_msg, current_time);
     strcat(exit_msg, reset_font);
+    strcat(exit_msg, "\n");
 }
+
+
+/* AES-256, CBC 암호화 함수 */
+void encrypt_msg(uint8_t plain[], uint8_t result[])
+{
+    size_t i;
+    // printf("\n------------ Encrypt Data ------------\n");
+
+    size_t plain_len = MSG_LEN_LIMIT;   // 고정크기로 암호화
+    size_t key_len = strlen(key);       // Length of Key
+        // // Plain text TEST code
+        // printf("[Plain Text] = ");
+        // for (i=0; i<plain_len; i++)
+        //     printf("%c", plain[i]);
+        // printf("\n");
+
+    // 평문 길이를 16의 배수로 맞춤
+    size_t hex_plain_len = plain_len;
+    if (plain_len % 16) {
+        hex_plain_len += 16 - (plain_len % 16);
+        // printf("The original Length of (Plain Text) = %zd\n", plain_len);
+        // printf("The Length of (padded Plain Text) = %zd\n", hex_plain_len);
+    }
+
+    // 키의 길이를 16의 배수로 맞춤
+    size_t hex_key_len = key_len;
+    if (key_len % 16) {
+        hex_key_len += 16 - (key_len % 16);
+        // printf("The original Length of (KEY) = %zd\n", key_len);
+        // printf("The Length of (padded KEY) = %zd\n", hex_key_len);
+    }
+
+    // 패딩된 데이터를 저장할 배열
+    uint8_t padded_plain[hex_plain_len];
+    uint8_t padded_key[hex_key_len];
+    memset(padded_plain, 0, hex_plain_len);
+    memset(padded_key, 0, hex_key_len);
+
+    for (i=0; i<plain_len; i++)
+        padded_plain[i] = plain[i];
+    
+    for (i=0; i<key_len; i++)
+        padded_key[i] = key[i];
+    
+    /* padding with PKCS7 */
+    // pkcs7_padding_pad_buffer -> returns the number of paddings it added
+    pkcs7_padding_pad_buffer(padded_plain, plain_len, sizeof(padded_plain), AES_BLOCKLEN);
+    pkcs7_padding_pad_buffer(padded_key, key_len, sizeof(padded_key), AES_BLOCKLEN);
+
+    // printf("\nThe padded Plain Text (HEX) is...");
+    // for (i=0; i<hex_plain_len; i++) {
+    //     if (i % 16 == 0) puts("");
+    //     printf("%02x ", padded_plain[i]);
+    // }
+    // puts("");
+
+        // /* KEY padding TEST code */
+        // printf("\nThe padded Key (HEX) is...");
+        // for (i=0; i<hex_key_len; i++) {
+        //     if (i % 16 == 0) puts("");
+        //     printf("%02x ", padded_key[i]);
+        // }
+        // puts("");
+    
+
+    // ** Encryption **
+    struct AES_ctx ctx;
+    AES_init_ctx_iv(&ctx, padded_key, iv);
+    AES_CBC_encrypt_buffer(&ctx, padded_plain, hex_plain_len);
+
+    memcpy(result, padded_plain, hex_plain_len);
+
+        // printf("\n[Encrypted] String is... ");
+        // for (i=0; i<hex_plain_len; i++) {
+        //     if (i % 16 == 0) puts("");
+        //     result[i] = padded_plain[i];
+        //     printf("%02x ", padded_plain[i]);
+        // }
+        // puts("");
+
+}
+
 

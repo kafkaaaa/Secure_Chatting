@@ -137,7 +137,7 @@ void send_msg(char *msg, int len)
     int i;
     pthread_mutex_lock(&mutex);
     for (i = 0; i < client_cnt; i++) {
-
+      
         // TODO: 1. Base64 Decoding
         
 
