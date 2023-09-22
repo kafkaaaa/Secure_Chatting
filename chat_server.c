@@ -1,14 +1,19 @@
 #include "chat.h"
 #include <netinet/in.h>
 
+
 void *handle_cilent(void *arg);
 void send_msg(char *msg, int len);
 void error_handling(char *msg);
 char *server_state(int count);
 void print_server_info(char port[]);
+void send_entrance_msg(char *msg, int len);
+void decrypt_msg(char* msg, char* result);
+
 
 int client_sockets[MAX_CLIENT_NUM];
 int client_cnt;
+int flag;
 pthread_mutex_t mutex;
 
 
@@ -132,18 +137,42 @@ void *handle_cilent(void *arg)
 }
 
 
+void send_entrance_msg(char *msg, int len)
+{
+    int i;
+    pthread_mutex_lock(&mutex);
+    for (i=0; i<client_cnt; i++) {
+        write(client_sockets[i], msg, strlen(msg));
+    }
+    pthread_mutex_unlock(&mutex);
+}
+
+
+// TODO: 입장/퇴장 메시지인지, 일반 대화문인지 어떻게 구별?? 혹은 구분할 필요가 없거나..
 void send_msg(char *msg, int len)
 {
     int i;
     pthread_mutex_lock(&mutex);
     for (i = 0; i < client_cnt; i++) {
       
-        // TODO: 1. Base64 Decoding
-        
+        // /* Message Decoding & Decryption */
+        // // #1. Base64 Decoding
+        // char base64_msg[MSG_LEN_LIMIT] = {0, };
+        // char decoded_msg[MSG_LEN_LIMIT] = {0, };
+        // char origin_msg[MSG_LEN_LIMIT] = {0, };
+        // size_t len = strlen(msg);
 
-        // TODO: 2. AES Decryption
+        // base64_decoder(msg, len, decoded_msg, MSG_LEN_LIMIT);
+
+
+        // // #2. AES Decryption
+        // decrypt_msg(decoded_msg, origin_msg);
+
+
+
 
         write(client_sockets[i], msg, len);
+        // write(client_sockets[i], origin_msg, strlen(origin_msg));
     }
     pthread_mutex_unlock(&mutex);
 }
@@ -178,4 +207,36 @@ void print_server_info(char* port)
     printf(" Max num of client      = %d\n", MAX_CLIENT_NUM);
     printf("└──────────────────────────────────────┘\n\n");
 }
+
+
+void decrypt_msg(char* decoded_msg, char* result)
+{
+    /* AES Decryption */
+    size_t i;
+    size_t enc_len = strlen(decoded_msg);
+    size_t key_len = strlen(key);
+
+    // 키의 길이를 16의 배수로 맞춤
+    size_t hex_key_len = key_len;
+    if (key_len % 16) {
+        hex_key_len += 16 - (key_len % 16);
+    }
+
+    uint8_t padded_key[hex_key_len];
+    memset(padded_key, 0, hex_key_len);
+    for (i=0; i<key_len; i++) {
+        padded_key[i] = (uint8_t)key[i];
+    }
+
+    pkcs7_padding_pad_buffer(padded_key, key_len, sizeof(padded_key), AES_BLOCKLEN);
+
+    struct AES_ctx ctx;
+    AES_init_ctx_iv(&ctx, padded_key, iv);
+    AES_ctx_set_iv(&ctx, iv);
+    AES_CBC_decrypt_buffer(&ctx, decoded_msg, enc_len);
+
+    size_t actual_data_len = pkcs7_padding_data_length(decoded_msg, enc_len, AES_BLOCKLEN);
+    memcpy(result, decoded_msg, actual_data_len);
+}
+
 

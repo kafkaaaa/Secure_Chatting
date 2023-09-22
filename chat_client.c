@@ -16,6 +16,7 @@ char msg_form[LEN_LIMIT];
 char msg[MSG_LEN_LIMIT];
 
 int client_cnt;
+int flag;
 struct tm *t;
 
 
@@ -24,6 +25,7 @@ int main(int argc, char *argv[])
     int sock;
     struct sockaddr_in serv_addr;
     pthread_t send_thread, receive_thread;
+    // pthread_t send2_thread;
     void *thread_return;
 
     if (argc != 4)
@@ -54,8 +56,10 @@ int main(int argc, char *argv[])
 
     print_client_info();
 
+    // pthread_create(&send2_thread, NULL, send2_msg, (void *)&sock);
     pthread_create(&send_thread, NULL, send_msg, (void *)&sock);
     pthread_create(&receive_thread, NULL, recv_msg, (void *)&sock);
+    // pthread_join(send2_thread, &thread_return);
     pthread_join(send_thread, &thread_return);
     pthread_join(receive_thread, &thread_return);
     close(sock);
@@ -64,7 +68,6 @@ int main(int argc, char *argv[])
 
 
 /* 메시지 전송 */
-// TODO: Base64 encoding & AES encryption
 void *send_msg(void *arg)
 {
     int sock = *((int *)arg);
@@ -76,6 +79,7 @@ void *send_msg(void *arg)
     printf("┌───────────── Eglobal Talk ─────────────┐\n");
     make_entrance_msg(entrance_msg);
     write(sock, entrance_msg, strlen(entrance_msg));
+
 
     while (1)
     {
@@ -100,22 +104,23 @@ void *send_msg(void *arg)
 
         // TODO: #1. AES-256 encrypt
         uint8_t* encrypted_msg = (uint8_t*) calloc(MSG_LEN_LIMIT, sizeof(uint8_t));
-        encrypt_msg(msg, encrypted_msg);
+        sprintf(dialog_msg, "[%s]: %s\n", name, msg);
+        encrypt_msg(dialog_msg, encrypted_msg);
 
 
-        // // TODO: 2. Base64 Encoding
-        // char encoded_msg[MSG_LEN_LIMIT] = {0, };
-        // // printf("----- Base64 Encoding -----\n");
-        // // printf("[TEST] Encoding target = %s\n", encrypted_msg);
-        // base64_encoder(encrypted_msg, MSG_LEN_LIMIT, encoded_msg, MSG_LEN_LIMIT);
-        // // printf("[TEST] Base64 result = %s\n", encoded_msg);
-
-
+        // TODO: 2. Base64 Encoding
+        // printf("----- Base64 Encoding -----\n");
+        // printf("[TEST] Encoding target = %s\n", encrypted_msg);
+        char base64_msg[MSG_LEN_LIMIT] = {0, };
+        // int ret = base64_encoder(str, strlen(str), base64_msg, MSG_LEN_LIMIT);
+        int ret = base64_encoder(encrypted_msg, strlen(encrypted_msg), base64_msg, MSG_LEN_LIMIT);
+        // printf("[TEST] ret = %d\n", ret);
+        // printf("[TEST] Base64 result = %s\n", base64_msg);
 
         sprintf(dialog_msg, "[%s]: %s\n", name, encrypted_msg);
-        // sprintf(dialog_msg, "[%s]: %s\n", name, encoded_msg);
-
         write(sock, dialog_msg, strlen(dialog_msg));
+
+        free(encrypted_msg);
     }
 
     return NULL;
@@ -173,7 +178,6 @@ void error_handling(char *msg)
 void make_entrance_msg(char* entrance_msg)
 {
     char* temp = (char*) calloc(MSG_LEN_LIMIT, sizeof(char));
-
     strcat(entrance_msg, entrance_msg_font);
     sprintf(temp, "※ [%s] (%s)님이 입장하셨습니다.", name, client_ip);
     strcat(entrance_msg, temp);
