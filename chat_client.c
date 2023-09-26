@@ -4,8 +4,10 @@ void *send_msg(void *arg);
 void *recv_msg(void *arg);
 void error_handling(char *msg);
 void print_client_info();
-void make_entrance_msg(char* msg);
-void make_exit_msg(char* msg);
+void *send_exit_msg(int sock);
+void *send_entrance_msg(int sock);
+void make_entrance_msg(char* entrance_msg);
+void make_exit_msg(char* exit_msg);
 void encrypt_msg(uint8_t plain[], uint8_t result[]);
 
 char name[LEN_LIMIT];
@@ -13,7 +15,7 @@ char server_port[LEN_LIMIT];
 char current_time[LEN_LIMIT];
 char client_ip[LEN_LIMIT];
 char msg_form[LEN_LIMIT]; 
-char msg[MSG_LEN_LIMIT];
+// char msg[MSG_LEN_LIMIT];
 
 int client_cnt;
 int flag;
@@ -25,7 +27,6 @@ int main(int argc, char *argv[])
     int sock;
     struct sockaddr_in serv_addr;
     pthread_t send_thread, receive_thread;
-    // pthread_t send2_thread;
     void *thread_return;
 
     if (argc != 4)
@@ -56,74 +57,99 @@ int main(int argc, char *argv[])
 
     print_client_info();
 
-    // pthread_create(&send2_thread, NULL, send2_msg, (void *)&sock);
     pthread_create(&send_thread, NULL, send_msg, (void *)&sock);
     pthread_create(&receive_thread, NULL, recv_msg, (void *)&sock);
-    // pthread_join(send2_thread, &thread_return);
+    // pthread_create(&ent_thread, NULL, send_ent_msg, (void *)&sock);
+    // pthread_create(&exit_thread, NULL, send_exit_msg, (void *)&sock);
     pthread_join(send_thread, &thread_return);
     pthread_join(receive_thread, &thread_return);
+    // pthread_join(ent_thread, &thread_return);
+    // pthread_join(exit_thread, &thread_return);
     close(sock);
     return 0;
 }
 
 
+
+
+
 /* 메시지 전송 */
 void *send_msg(void *arg)
 {
+    uint8_t i;
     int sock = *((int *)arg);
+    char msg[MSG_LEN_LIMIT];
     char dialog_msg[200];
-    char entrance_msg[MSG_LEN_LIMIT];
-    char exit_msg[MSG_LEN_LIMIT];
 
-    // 처음 입장시 메시지
     printf("┌───────────── Eglobal Talk ─────────────┐\n");
-    make_entrance_msg(entrance_msg);
-    write(sock, entrance_msg, strlen(entrance_msg));
-
+    send_entrance_msg(sock);
 
     while (1)
     {
         fgets(msg, MSG_LEN_LIMIT, stdin);
-        // msg[strlen(msg) - 1] = '\0';    // fgets( ) 개행문자 제거를 여기서 해버리면 일반 대화의 개행문자도 제거해버림
 
-        // 클라이언트가 채팅방 나갔을 때 처리
-        // if (strcmp(msg, "X") == 0)
-        if (strcmp(msg, "X\n") == 0)
-        {
-            make_exit_msg(exit_msg);
-            client_cnt--;
-            write(sock, exit_msg, strlen(exit_msg));
-            close(sock);
-            exit(0);
+        // client exit
+        if (strcmp(msg, "X\n") == 0) {
+            write(sock, NULL, 1);
+            send_exit_msg(sock);
+            break;
         }
 
 
-
         /* 일반 대화 메시지 전송(+암호화) 작업 */
-        /* plain text -> #1. AES-256 encrypt -> Binary data -> #2. Base64 encoding */
+        /* plain text -> #1. AES-256 Encryption -> Binary data -> #2. Base64 Encoding */
+        sprintf(dialog_msg, "[%s]: %s", name, msg);   // 이름과 메시지 함께 인코딩+암호화
 
-        // TODO: #1. AES-256 encrypt
-        uint8_t* encrypted_msg = (uint8_t*) calloc(MSG_LEN_LIMIT, sizeof(uint8_t));
-        sprintf(dialog_msg, "[%s]: %s\n", name, msg);
+        // TODO: #1. AES-256 Encryption
+        uint8_t* encrypted_msg = (uint8_t*) calloc(MSG_LEN_LIMIT + 16, sizeof(uint8_t));
         encrypt_msg(dialog_msg, encrypted_msg);
+            printf("-----------------------------------------------------------------------\n");
+            printf("[복호화 결과] = ");
+            for (i=0; i<strlen(encrypted_msg); i++) {
+                printf("%hhx", encrypted_msg[i]);
+            }
+            puts("");
 
-
-        // TODO: 2. Base64 Encoding
-        // printf("----- Base64 Encoding -----\n");
-        // printf("[TEST] Encoding target = %s\n", encrypted_msg);
-        char base64_msg[MSG_LEN_LIMIT] = {0, };
-        // int ret = base64_encoder(str, strlen(str), base64_msg, MSG_LEN_LIMIT);
+        // TODO: #2. Base64 Encoding
+        char* base64_msg = (char*) calloc(MSG_LEN_LIMIT + 16, sizeof(char));
+        // char base64_msg[MSG_LEN_LIMIT] = {0, };
         int ret = base64_encoder(encrypted_msg, strlen(encrypted_msg), base64_msg, MSG_LEN_LIMIT);
-        // printf("[TEST] ret = %d\n", ret);
-        // printf("[TEST] Base64 result = %s\n", base64_msg);
+            if (ret <= 0) printf("[base64 encoding ERROR!!!]");
+            else printf("[인코딩 결과] = %s\n", base64_msg);
+            printf("-----------------------------------------------------------------------\n");
 
-        sprintf(dialog_msg, "[%s]: %s\n", name, encrypted_msg);
-        write(sock, dialog_msg, strlen(dialog_msg));
-
+        write(sock, base64_msg, strlen(base64_msg));
         free(encrypted_msg);
+        free(base64_msg);
+        // write(sock, dialog_msg, strlen(dialog_msg));
     }
 
+    send_exit_msg(sock);
+
     return NULL;
+}
+
+
+// 처음 입장시 메시지
+void *send_entrance_msg(int sock)
+{
+    char entrance_msg[MSG_LEN_LIMIT];
+    make_entrance_msg(entrance_msg);
+
+    write(sock, entrance_msg, strlen(entrance_msg));
+}
+
+
+// 클라이언트 퇴장 메시지
+void *send_exit_msg(int sock)
+{
+    char exit_msg[MSG_LEN_LIMIT];
+    make_exit_msg(exit_msg);
+    // client_cnt--;
+    write(sock, exit_msg, strlen(exit_msg));
+
+    close(sock);
+    exit(0);
 }
 
 
@@ -131,16 +157,20 @@ void *send_msg(void *arg)
 void *recv_msg(void *arg)
 {
     int sock = *((int *)arg);
-    char dialog_msg[LEN_LIMIT + MSG_LEN_LIMIT];
+    char dialog_msg[MSG_LEN_LIMIT + 32];
     int msg_len;
 
     while (1)
     {
         msg_len = read(sock, dialog_msg, LEN_LIMIT + MSG_LEN_LIMIT - 1);
-        if (msg_len == -1) return (void *)-1;
+        // msg_len = read(sock, dialog_msg, LEN_LIMIT + MSG_LEN_LIMIT);
+        if (msg_len == -1) {
+            return (void*)-1;
+        }
         dialog_msg[msg_len] = 0;
         fputs(dialog_msg, stdout);
     }
+
     return NULL;
 }
 
@@ -154,12 +184,10 @@ void print_client_info()
         printf(" My Name      : %s \n", name);
         printf(" Current Time : %s \n", current_time);
 
-    printf("└────────────────────────────────────────┘\n");
+    printf("└───────────────────────────────────────┘\n");
     printf("채팅방을 나가시려면 X를 눌러 조의를 표하십시오..\n\n");
 
     // TODO: 기능 추가 #1. 채팅 로그 파일로 저장
-    
-    // TODO: 수정 #1. 한 사용자(client)가 채팅방을 나갔을 때 현재 인원도 다시 카운팅해서 출력 (서버에)
     
 }
 
@@ -174,7 +202,7 @@ void error_handling(char *msg)
 
 
 
-/* client entrace msg 작성 */
+/* client 연결(입장) 시 메시지 */
 void make_entrance_msg(char* entrance_msg)
 {
     char* temp = (char*) calloc(MSG_LEN_LIMIT, sizeof(char));
@@ -219,9 +247,8 @@ void make_exit_msg(char* exit_msg)
 void encrypt_msg(uint8_t plain[], uint8_t result[])
 {
     size_t i;
-    // printf("\n------------ Encrypt Data ------------\n");
-
-    size_t plain_len = MSG_LEN_LIMIT;   // 고정크기로 암호화
+    // size_t plain_len = MSG_LEN_LIMIT;   // 고정크기로 암호화
+    size_t plain_len = strlen(plain);
     size_t key_len = strlen(key);       // Length of Key
         // // Plain text TEST code
         // printf("[Plain Text] = ");
@@ -233,17 +260,17 @@ void encrypt_msg(uint8_t plain[], uint8_t result[])
     size_t hex_plain_len = plain_len;
     if (plain_len % 16) {
         hex_plain_len += 16 - (plain_len % 16);
+    }
         // printf("The original Length of (Plain Text) = %zd\n", plain_len);
         // printf("The Length of (padded Plain Text) = %zd\n", hex_plain_len);
-    }
 
     // 키의 길이를 16의 배수로 맞춤
     size_t hex_key_len = key_len;
     if (key_len % 16) {
         hex_key_len += 16 - (key_len % 16);
+    }
         // printf("The original Length of (KEY) = %zd\n", key_len);
         // printf("The Length of (padded KEY) = %zd\n", hex_key_len);
-    }
 
     // 패딩된 데이터를 저장할 배열
     uint8_t padded_plain[hex_plain_len];
@@ -285,6 +312,7 @@ void encrypt_msg(uint8_t plain[], uint8_t result[])
 
     memcpy(result, padded_plain, hex_plain_len);
 
+        // /* Encrypt TEST code */
         // printf("\n[Encrypted] String is... ");
         // for (i=0; i<hex_plain_len; i++) {
         //     if (i % 16 == 0) puts("");

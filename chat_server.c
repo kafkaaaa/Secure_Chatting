@@ -1,15 +1,14 @@
 #include "chat.h"
 #include <netinet/in.h>
 
-
 void *handle_cilent(void *arg);
 void send_msg(char *msg, int len);
+void send_entrance_msg(char *msg);
+void send_exit_msg(char *msg);
 void error_handling(char *msg);
 char *server_state(int count);
 void print_server_info(char port[]);
-void send_entrance_msg(char *msg, int len);
 void decrypt_msg(char* msg, char* result);
-
 
 int client_sockets[MAX_CLIENT_NUM];
 int client_cnt;
@@ -79,7 +78,7 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
     }
 
     while (1) {
-        // 메인 스레드 = Listen 소켓. accept( )로 연결 요청 수락.
+        // (스레드 = Listen 소켓, accept( )로 연결 요청 수락)
         client_addr_len = sizeof(client_addr);
         client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_len);
         if (client_socket == -1) continue;
@@ -108,15 +107,31 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
 }
 
 
+
 void *handle_cilent(void *arg)
 {
     int client_socket = *((int *)arg);
     int i, str_len = 0;
-    char msg[MSG_LEN_LIMIT];
+    char msg[200];
 
-    while ((str_len = read(client_socket, msg, sizeof(msg))) != 0) {
+    // 처음 입장할 때 알림 메시지
+    str_len = read(client_socket, msg, sizeof(msg));
+    send_entrance_msg(msg);
+    
+    while (1) {
+        str_len = read(client_socket, msg, sizeof(msg));
+
+        if (msg == NULL) break;
+        if (str_len == -1 || str_len == 0) {
+            // printf("ERROR or EOF \n");
+            break;
+        }
+
         send_msg(msg, str_len);
     }
+
+    read(client_socket, msg, sizeof(msg));
+    send_exit_msg(msg);
 
     // remove disconnected client
     pthread_mutex_lock(&mutex);
@@ -130,52 +145,68 @@ void *handle_cilent(void *arg)
             break;
         }
     }
-    client_cnt--;
+
+
     pthread_mutex_unlock(&mutex);
     close(client_socket);
     return NULL;
 }
 
 
-void send_entrance_msg(char *msg, int len)
+
+void send_entrance_msg(char* msg)
 {
     int i;
     pthread_mutex_lock(&mutex);
-    for (i=0; i<client_cnt; i++) {
+    for (i=0; i<client_cnt; i++) {      // broadcast to all clients
         write(client_sockets[i], msg, strlen(msg));
     }
     pthread_mutex_unlock(&mutex);
 }
 
 
-// TODO: 입장/퇴장 메시지인지, 일반 대화문인지 어떻게 구별?? 혹은 구분할 필요가 없거나..
+void send_exit_msg(char* msg)
+{
+    int i;
+    pthread_mutex_lock(&mutex);
+    for (i=0; i<client_cnt; i++) {
+        write(client_sockets[i], msg, strlen(msg));
+    }
+    client_cnt--;
+    pthread_mutex_unlock(&mutex);
+}
+
+
 void send_msg(char *msg, int len)
 {
     int i;
     pthread_mutex_lock(&mutex);
+    // 채팅방의 모든 client들에게 (복호화된) 메시지 전송
+    // Base64 Encoded text -> #1. Base64 Decoding -> Binary -> #2. AES Decryption -> origin text
     for (i = 0; i < client_cnt; i++) {
       
-        // /* Message Decoding & Decryption */
-        // // #1. Base64 Decoding
-        // char base64_msg[MSG_LEN_LIMIT] = {0, };
-        // char decoded_msg[MSG_LEN_LIMIT] = {0, };
-        // char origin_msg[MSG_LEN_LIMIT] = {0, };
-        // size_t len = strlen(msg);
-
-        // base64_decoder(msg, len, decoded_msg, MSG_LEN_LIMIT);
-
-
-        // // #2. AES Decryption
-        // decrypt_msg(decoded_msg, origin_msg);
+        /* Message Decoding & Decryption */
+        // #1. Base64 Decoding
+        char base64_msg[MSG_LEN_LIMIT] = {0, };
+        char decoded_msg[MSG_LEN_LIMIT] = {0, };
+        char origin_msg[MSG_LEN_LIMIT] = {0, };
+        size_t len = strlen(msg);
+        base64_decoder(msg, len, decoded_msg, MSG_LEN_LIMIT);
+            // printf("[Decode result] = %s\n", decoded_msg);
 
 
+        // #2. AES Decryption
+        decrypt_msg(decoded_msg, origin_msg);
+            // printf("[Decrypt result] = %s\n", origin_msg);
 
 
-        write(client_sockets[i], msg, len);
-        // write(client_sockets[i], origin_msg, strlen(origin_msg));
+
+        // write(client_sockets[i], msg, len);
+        write(client_sockets[i], origin_msg, strlen(origin_msg));
     }
     pthread_mutex_unlock(&mutex);
 }
+
 
 
 void error_handling(char *msg)
@@ -184,6 +215,7 @@ void error_handling(char *msg)
     fputc('\n', stderr);
     exit(1);
 }
+
 
 
 char* server_state(int count)
@@ -199,6 +231,7 @@ char* server_state(int count)
 }
 
 
+
 void print_server_info(char* port)
 {
     printf("\n┌────────── Chat Server Info ──────────┐\n");
@@ -209,14 +242,14 @@ void print_server_info(char* port)
 }
 
 
+
+/* AES Decryption */
 void decrypt_msg(char* decoded_msg, char* result)
 {
-    /* AES Decryption */
     size_t i;
     size_t enc_len = strlen(decoded_msg);
     size_t key_len = strlen(key);
 
-    // 키의 길이를 16의 배수로 맞춤
     size_t hex_key_len = key_len;
     if (key_len % 16) {
         hex_key_len += 16 - (key_len % 16);
