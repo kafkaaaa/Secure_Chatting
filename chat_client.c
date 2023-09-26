@@ -1,4 +1,5 @@
 #include "chat.h"
+#include <termios.h>    // to turn off echo in terminal
 
 void *send_msg(void *arg);
 void *recv_msg(void *arg);
@@ -24,6 +25,13 @@ struct tm *t;
 
 int main(int argc, char *argv[])
 {
+    /* terminal echo off setting */
+    struct termios tm;
+    tcgetattr(STDIN_FILENO, &tm);
+    tm.c_lflag &= ~ECHO; // turn off echo
+    tcsetattr(STDIN_FILENO, TCSANOW, &tm);
+    /* */
+
     int sock;
     struct sockaddr_in serv_addr;
     pthread_t send_thread, receive_thread;
@@ -103,20 +111,20 @@ void *send_msg(void *arg)
         // TODO: #1. AES-256 Encryption
         uint8_t* encrypted_msg = (uint8_t*) calloc(MSG_LEN_LIMIT + 16, sizeof(uint8_t));
         encrypt_msg(dialog_msg, encrypted_msg);
-            printf("-----------------------------------------------------------------------\n");
-            printf("[복호화 결과] = ");
-            for (i=0; i<strlen(encrypted_msg); i++) {
-                printf("%hhx", encrypted_msg[i]);
-            }
-            puts("");
+            // printf("-----------------------------------------------------------------------\n");
+            // printf("[복호화 결과] = ");
+            // for (i=0; i<strlen(encrypted_msg); i++) {
+            //     printf("%hhx", encrypted_msg[i]);
+            // }
+            // puts("");
 
         // TODO: #2. Base64 Encoding
         char* base64_msg = (char*) calloc(MSG_LEN_LIMIT + 16, sizeof(char));
         // char base64_msg[MSG_LEN_LIMIT] = {0, };
         int ret = base64_encoder(encrypted_msg, strlen(encrypted_msg), base64_msg, MSG_LEN_LIMIT);
             if (ret <= 0) printf("[base64 encoding ERROR!!!]");
-            else printf("[인코딩 결과] = %s\n", base64_msg);
-            printf("-----------------------------------------------------------------------\n");
+            // else printf("[인코딩 결과] = %s\n", base64_msg);
+            // printf("-----------------------------------------------------------------------\n");
 
         write(sock, base64_msg, strlen(base64_msg));
         free(encrypted_msg);
