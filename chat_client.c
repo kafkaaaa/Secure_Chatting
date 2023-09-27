@@ -1,5 +1,6 @@
 #include "chat.h"
-#include <termios.h>    // to turn off echo in terminal
+#include <signal.h>
+// #include <termios.h>    // to turn off echo in terminal
 
 void *send_msg(void *arg);
 void *recv_msg(void *arg);
@@ -25,11 +26,16 @@ struct tm *t;
 
 int main(int argc, char *argv[])
 {
-    /* terminal echo off setting */
-    struct termios tm;
-    tcgetattr(STDIN_FILENO, &tm);
-    tm.c_lflag &= ~ECHO; // turn off echo
-    tcsetattr(STDIN_FILENO, TCSANOW, &tm);
+    // /* terminal echo off setting */
+    // struct termios tm;
+    // tcgetattr(STDIN_FILENO, &tm);
+    // tm.c_lflag &= ~ECHO; // turn off echo
+    // tcsetattr(STDIN_FILENO, TCSANOW, &tm);
+    // /* */
+
+
+    /* ignore 'ctrl + c' */
+    signal(SIGINT, SIG_IGN);
     /* */
 
     int sock;
