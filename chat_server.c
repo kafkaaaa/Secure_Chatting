@@ -13,6 +13,7 @@ void decrypt_msg(char* msg, char* result);
 int client_sockets[MAX_CLIENT_NUM];
 int client_cnt;
 int flag;
+FILE* chat_log_fp;  // 채팅 로그 저장
 pthread_mutex_t mutex;
 
 
@@ -39,6 +40,12 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
 
     print_server_info(argv[1]);
 
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "wb");
+    if (chat_log_fp == NULL) {
+        printf("[%s] 파일 생성 실패!\n", CHAT_LOG_FNAME);
+    }
+    fclose(chat_log_fp);
+
     // Mutex는 화장실이 1개 있는 상황과 비슷하다.
     pthread_mutex_init(&mutex, NULL);
 
@@ -64,9 +71,7 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
     // htons, htonl = host to network short/long
         // 네트워크 통신의 Byte order는 Big Endian으로 정해져있어서 host의 Byte order를 Big Endian으로 변환해줌
         // INADDR_ANY(=0.0.0.0) = 자동으로 내 컴퓨터에 존재하는 랜 카드 중 사용 가능한 랜 카드의 IP주소를 사용하라는 의미.
-        // TODO: 127.0.0.1과 0.0.0.0의 차이??
 
-    
     // 소켓에 IP, 포트번호 할당
     if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
         error_handling("[bind] ERROR");
@@ -107,7 +112,6 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
 }
 
 
-
 void *handle_cilent(void *arg)
 {
     int client_socket = *((int *)arg);
@@ -117,7 +121,7 @@ void *handle_cilent(void *arg)
     // 처음 입장할 때 알림 메시지
     str_len = read(client_socket, msg, sizeof(msg));
     send_entrance_msg(msg);
-    
+
     while (1) {
         str_len = read(client_socket, msg, sizeof(msg));
 
@@ -127,6 +131,9 @@ void *handle_cilent(void *arg)
             break;
         }
 
+        chat_log_fp = fopen(CHAT_LOG_FNAME, "ab");   // 로그파일 이어쓰기 (ab = append, binary) 
+        fwrite(msg, sizeof(char), strlen(msg), chat_log_fp);
+        fclose(chat_log_fp);
         send_msg(msg, str_len);
     }
 
@@ -145,14 +152,12 @@ void *handle_cilent(void *arg)
             break;
         }
     }
-    
     printf("<현재 인원: %d/%d명>\n", client_cnt, MAX_CLIENT_NUM);
 
     pthread_mutex_unlock(&mutex);
     close(client_socket);
     return NULL;
 }
-
 
 
 void send_entrance_msg(char* msg)
@@ -181,33 +186,32 @@ void send_exit_msg(char* msg)
 void send_msg(char *msg, int len)
 {
     int i;
+    // size_t j;
     pthread_mutex_lock(&mutex);
     // 채팅방의 모든 client들에게 (복호화된) 메시지 전송
     // Base64 Encoded text -> #1. Base64 Decoding -> Binary -> #2. AES Decryption -> origin text
     for (i = 0; i < client_cnt; i++) {
       
-        /* Message Decoding & Decryption */
         // #1. Base64 Decoding
         char base64_msg[MSG_LEN_LIMIT] = {0, };
         char decoded_msg[MSG_LEN_LIMIT] = {0, };
         char origin_msg[MSG_LEN_LIMIT] = {0, };
         size_t len = strlen(msg);
         base64_decoder(msg, len, decoded_msg, MSG_LEN_LIMIT);
-            // printf("[Decode result] = %s\n", decoded_msg);
-
+            // printf("[디코딩 결과] = ");
+            //     for (j=0; j<strlen(decoded_msg); j++) {
+            //         printf("%hhx", decoded_msg[j]);
+            //     }
+            //     puts("");
 
         // #2. AES Decryption
         decrypt_msg(decoded_msg, origin_msg);
-            // printf("[Decrypt result] = %s\n", origin_msg);
+            // printf("[복호화 결과] = %s\n", origin_msg);
 
-
-
-        // write(client_sockets[i], msg, len);
         write(client_sockets[i], origin_msg, strlen(origin_msg));
     }
     pthread_mutex_unlock(&mutex);
 }
-
 
 
 void error_handling(char *msg)
@@ -216,7 +220,6 @@ void error_handling(char *msg)
     fputc('\n', stderr);
     exit(1);
 }
-
 
 
 char* server_state(int count)
@@ -232,7 +235,6 @@ char* server_state(int count)
 }
 
 
-
 void print_server_info(char* port)
 {
     printf("\n┌────────── Chat Server Info ──────────┐\n");
@@ -243,12 +245,13 @@ void print_server_info(char* port)
 }
 
 
-
 /* AES Decryption */
 void decrypt_msg(char* decoded_msg, char* result)
 {
     size_t i;
     size_t enc_len = strlen(decoded_msg);
+        // test code
+        // printf("복호화 대상 길이: %zd\n", enc_len);
     size_t key_len = strlen(key);
 
     size_t hex_key_len = key_len;
@@ -269,8 +272,14 @@ void decrypt_msg(char* decoded_msg, char* result)
     AES_ctx_set_iv(&ctx, iv);
     AES_CBC_decrypt_buffer(&ctx, decoded_msg, enc_len);
 
-    size_t actual_data_len = pkcs7_padding_data_length(decoded_msg, enc_len, AES_BLOCKLEN);
-    memcpy(result, decoded_msg, actual_data_len);
-}
+    if (enc_len % 16 != 0) {
+        size_t actual_data_len = pkcs7_padding_data_length(decoded_msg, enc_len, AES_BLOCKLEN);
+            // printf("실제 평문 길이: %zd\n\n", actual_data_len);
 
+        memcpy(result, decoded_msg, actual_data_len);
+    }
+    else {
+        memcpy(result, decoded_msg, enc_len);
+    }
+}
 

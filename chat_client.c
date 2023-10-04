@@ -17,7 +17,6 @@ char server_port[LEN_LIMIT];
 char current_time[LEN_LIMIT];
 char client_ip[LEN_LIMIT];
 char msg_form[LEN_LIMIT]; 
-// char msg[MSG_LEN_LIMIT];
 
 int client_cnt;
 int flag;
@@ -34,22 +33,21 @@ int main(int argc, char *argv[])
     // /* */
 
 
-    /* ignore 'ctrl + c' */
-    signal(SIGINT, SIG_IGN);
-    /* */
+    // /* ignore 'ctrl + c' */
+    // signal(SIGINT, SIG_IGN);
+    // /* */
+
 
     int sock;
     struct sockaddr_in serv_addr;
     pthread_t send_thread, receive_thread;
     void *thread_return;
 
-    if (argc != 4)
-    {
+    if (argc != 4) {
         printf("ex) %s [IP] [PORT] [NAME]\n", argv[0]);
         printf("ex) ./client 192.168.0.1 8080 홍길동\n");
         exit(1);
     }
-
 
     time_t timer = time(NULL);
     t = localtime(&timer);
@@ -73,18 +71,11 @@ int main(int argc, char *argv[])
 
     pthread_create(&send_thread, NULL, send_msg, (void *)&sock);
     pthread_create(&receive_thread, NULL, recv_msg, (void *)&sock);
-    // pthread_create(&ent_thread, NULL, send_ent_msg, (void *)&sock);
-    // pthread_create(&exit_thread, NULL, send_exit_msg, (void *)&sock);
     pthread_join(send_thread, &thread_return);
     pthread_join(receive_thread, &thread_return);
-    // pthread_join(ent_thread, &thread_return);
-    // pthread_join(exit_thread, &thread_return);
     close(sock);
     return 0;
 }
-
-
-
 
 
 /* 메시지 전송 */
@@ -100,10 +91,7 @@ void *send_msg(void *arg)
 
     while (1)
     {
-        // TODO: 자신이 입력한 대화가 2번 출력되지 않게 하려면...
-        // -> fget 말고 scanf로 시도해서 커서를 이름 다음에 위치하는 느낌(?)으로 
         // fgets(msg, MSG_LEN_LIMIT, stdin);
-        
         scanf(" %[^\n]s", msg);     // [^\n] = \n이 나오기 전 까지 모든 문자열을 받겠다는 의미.
         strcat(msg, "\n");
 
@@ -114,34 +102,31 @@ void *send_msg(void *arg)
             break;
         }
 
-
         /* 일반 대화 메시지 전송(+암호화) 작업 */
         /* plain text -> #1. AES-256 Encryption -> Binary data -> #2. Base64 Encoding */
         sprintf(dialog_msg, "[%s]: %s", name, msg);   // 이름과 메시지 함께 인코딩+암호화
 
-        // TODO: #1. AES-256 Encryption
+        // #1. AES-256 Encryption
         uint8_t* encrypted_msg = (uint8_t*) calloc(MSG_LEN_LIMIT + 16, sizeof(uint8_t));
         encrypt_msg(dialog_msg, encrypted_msg);
             // printf("-----------------------------------------------------------------------\n");
-            // printf("[복호화 결과] = ");
+            // printf("[암호화 결과] = ");
             // for (i=0; i<strlen(encrypted_msg); i++) {
             //     printf("%hhx", encrypted_msg[i]);
             // }
             // puts("");
 
-        // TODO: #2. Base64 Encoding
+        // #2. Base64 Encoding
         char* base64_msg = (char*) calloc(MSG_LEN_LIMIT + 16, sizeof(char));
         // char base64_msg[MSG_LEN_LIMIT] = {0, };
         int ret = base64_encoder(encrypted_msg, strlen(encrypted_msg), base64_msg, MSG_LEN_LIMIT);
-            if (ret <= 0) printf("[base64 encoding ERROR!!!]");
+            // if (ret <= 0) printf("[base64 encoding ERROR!!!]");
             // else printf("[인코딩 결과] = %s\n", base64_msg);
             // printf("-----------------------------------------------------------------------\n");
 
         write(sock, base64_msg, strlen(base64_msg));
         free(encrypted_msg);
         free(base64_msg);
-        // free(msg);
-        // write(sock, dialog_msg, strlen(dialog_msg));
     }
 
     send_exit_msg(sock);
@@ -203,12 +188,8 @@ void print_client_info()
         printf(" Client IP    : %s \n", client_ip);
         printf(" My Name      : %s \n", name);
         printf(" Current Time : %s \n", current_time);
-
     printf("└───────────────────────────────────────┘\n");
     printf("채팅방을 나가시려면 X를 눌러 조의를 표하십시오..\n\n");
-
-    // TODO: 기능 추가 #1. 채팅 로그 파일로 저장
-    
 }
 
 
@@ -219,7 +200,6 @@ void error_handling(char *msg)
     fputc('\n', stderr);
     exit(1);
 }
-
 
 
 /* client 연결(입장) 시 메시지 */
@@ -267,32 +247,18 @@ void make_exit_msg(char* exit_msg)
 void encrypt_msg(uint8_t plain[], uint8_t result[])
 {
     size_t i;
-    // size_t plain_len = MSG_LEN_LIMIT;   // 고정크기로 암호화
     size_t plain_len = strlen(plain);
     size_t key_len = strlen(key);       // Length of Key
-        // // Plain text TEST code
-        // printf("[Plain Text] = ");
-        // for (i=0; i<plain_len; i++)
-        //     printf("%c", plain[i]);
-        // printf("\n");
-
-    // 평문 길이를 16의 배수로 맞춤
     size_t hex_plain_len = plain_len;
     if (plain_len % 16) {
         hex_plain_len += 16 - (plain_len % 16);
     }
-        // printf("The original Length of (Plain Text) = %zd\n", plain_len);
-        // printf("The Length of (padded Plain Text) = %zd\n", hex_plain_len);
 
-    // 키의 길이를 16의 배수로 맞춤
     size_t hex_key_len = key_len;
     if (key_len % 16) {
         hex_key_len += 16 - (key_len % 16);
     }
-        // printf("The original Length of (KEY) = %zd\n", key_len);
-        // printf("The Length of (padded KEY) = %zd\n", hex_key_len);
 
-    // 패딩된 데이터를 저장할 배열
     uint8_t padded_plain[hex_plain_len];
     uint8_t padded_key[hex_key_len];
     memset(padded_plain, 0, hex_plain_len);
@@ -304,43 +270,13 @@ void encrypt_msg(uint8_t plain[], uint8_t result[])
     for (i=0; i<key_len; i++)
         padded_key[i] = key[i];
     
-    /* padding with PKCS7 */
-    // pkcs7_padding_pad_buffer -> returns the number of paddings it added
     pkcs7_padding_pad_buffer(padded_plain, plain_len, sizeof(padded_plain), AES_BLOCKLEN);
     pkcs7_padding_pad_buffer(padded_key, key_len, sizeof(padded_key), AES_BLOCKLEN);
-
-    // printf("\nThe padded Plain Text (HEX) is...");
-    // for (i=0; i<hex_plain_len; i++) {
-    //     if (i % 16 == 0) puts("");
-    //     printf("%02x ", padded_plain[i]);
-    // }
-    // puts("");
-
-        // /* KEY padding TEST code */
-        // printf("\nThe padded Key (HEX) is...");
-        // for (i=0; i<hex_key_len; i++) {
-        //     if (i % 16 == 0) puts("");
-        //     printf("%02x ", padded_key[i]);
-        // }
-        // puts("");
     
-
-    // ** Encryption **
     struct AES_ctx ctx;
     AES_init_ctx_iv(&ctx, padded_key, iv);
     AES_CBC_encrypt_buffer(&ctx, padded_plain, hex_plain_len);
 
     memcpy(result, padded_plain, hex_plain_len);
-
-        // /* Encrypt TEST code */
-        // printf("\n[Encrypted] String is... ");
-        // for (i=0; i<hex_plain_len; i++) {
-        //     if (i % 16 == 0) puts("");
-        //     result[i] = padded_plain[i];
-        //     printf("%02x ", padded_plain[i]);
-        // }
-        // puts("");
-
 }
-
 
