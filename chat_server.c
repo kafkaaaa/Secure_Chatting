@@ -145,7 +145,8 @@ void *handle_cilent(void *arg)
             break;
         }
     }
-
+    
+    printf("<현재 인원: %d/%d명>\n", client_cnt, MAX_CLIENT_NUM);
 
     pthread_mutex_unlock(&mutex);
     close(client_socket);
