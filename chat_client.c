@@ -100,7 +100,12 @@ void *send_msg(void *arg)
 
     while (1)
     {
-        fgets(msg, MSG_LEN_LIMIT, stdin);
+        // TODO: 자신이 입력한 대화가 2번 출력되지 않게 하려면...
+        // -> fget 말고 scanf로 시도해서 커서를 이름 다음에 위치하는 느낌(?)으로 
+        // fgets(msg, MSG_LEN_LIMIT, stdin);
+        
+        scanf(" %[^\n]s", msg);     // [^\n] = \n이 나오기 전 까지 모든 문자열을 받겠다는 의미.
+        strcat(msg, "\n");
 
         // client exit
         if (strcmp(msg, "X\n") == 0) {
@@ -135,6 +140,7 @@ void *send_msg(void *arg)
         write(sock, base64_msg, strlen(base64_msg));
         free(encrypted_msg);
         free(base64_msg);
+        // free(msg);
         // write(sock, dialog_msg, strlen(dialog_msg));
     }
 
