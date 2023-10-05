@@ -3,3 +3,5 @@ client
 .vscode/settings.json
 socket_server.c
 .gitignore
+64test.c
+64test

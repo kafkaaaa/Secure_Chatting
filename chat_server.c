@@ -2,7 +2,7 @@
 #include <netinet/in.h>
 
 void *handle_cilent(void *arg);
-void send_msg(char *msg, int len);
+void send_msg(char *msg);
 void send_entrance_msg(char *msg);
 void send_exit_msg(char *msg);
 void error_handling(char *msg);
@@ -39,12 +39,7 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
     }
 
     print_server_info(argv[1]);
-
     chat_log_fp = fopen(CHAT_LOG_FNAME, "wb");
-    if (chat_log_fp == NULL) {
-        printf("[%s] 파일 생성 실패!\n", CHAT_LOG_FNAME);
-    }
-    fclose(chat_log_fp);
 
     // Mutex는 화장실이 1개 있는 상황과 비슷하다.
     pthread_mutex_init(&mutex, NULL);
@@ -96,7 +91,7 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
         pthread_detach(t_id);
 
                                             // inet_nota  = IPv4 -> ASCII
-        printf("[New Connect!] client(%s)  ", inet_ntoa(client_addr.sin_addr));
+        printf("[New Connect !] client(%s)  ", inet_ntoa(client_addr.sin_addr));
 
         // add current time
         time_t timer = time(NULL);
@@ -104,10 +99,11 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
         printf("(%d-%d-%d %02d:%02d:%02d)\n", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
                                               t->tm_hour + 9,    t->tm_min,     t->tm_sec);
                                               
-        printf("<현재 인원: %d/%d명>\n\n", client_cnt, MAX_CLIENT_NUM);
+        printf("[현재 인원: %d / %d명]\n\n", client_cnt, MAX_CLIENT_NUM);
     }
 
     close(server_socket);
+    fclose(chat_log_fp);
     return 0;
 }
 
@@ -115,32 +111,49 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
 void *handle_cilent(void *arg)
 {
     int client_socket = *((int *)arg);
-    int i, str_len = 0;
+    int i, msg_len = 0;
     char msg[200];
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "ab");   // append
+
 
     // 처음 입장할 때 알림 메시지
-    str_len = read(client_socket, msg, sizeof(msg));
+    msg_len = read(client_socket, msg, sizeof(msg));
     send_entrance_msg(msg);
+    fwrite(msg, sizeof(char), strlen(msg), chat_log_fp);
+    // fwrite(msg, 1, msg_len, chat_log_fp);
 
+
+    // 일반 대화 메시지
     while (1) {
-        str_len = read(client_socket, msg, sizeof(msg));
-
+        // char* normal_msg = calloc(MSG_LEN_LIMIT, sizeof(char));
+        msg_len = read(client_socket, msg, sizeof(msg));
+        // msg_len = read(client_socket, normal_msg, sizeof(normal_msg));
+        // if (msg_len == -1) {
+        //     printf("**message read ERROR**\n");
+        //     break;
+        // }
         if (msg == NULL) break;
-        if (str_len == -1 || str_len == 0) {
-            // printf("ERROR or EOF \n");
-            break;
-        }
+        // if (normal_msg == NULL) break;
+        if (msg_len == -1 || msg_len == 0) break;    // -1: ERROR, 0: EOF
 
-        chat_log_fp = fopen(CHAT_LOG_FNAME, "ab");   // 로그파일 이어쓰기 (ab = append, binary) 
+        send_msg(msg);
+        // send_msg(normal_msg);
         fwrite(msg, sizeof(char), strlen(msg), chat_log_fp);
-        fclose(chat_log_fp);
-        send_msg(msg, str_len);
+        // fwrite(normal_msg, sizeof(char), strlen(normal_msg), chat_log_fp);
+        // free(normal_msg);
     }
 
-    read(client_socket, msg, sizeof(msg));
-    send_exit_msg(msg);
 
-    // remove disconnected client
+    // 클라이언트 퇴장 메시지
+    msg_len = read(client_socket, msg, sizeof(msg));
+    if (msg_len == -1) {
+        printf("\n**message read ERROR**\n");
+    }
+    else {
+        send_exit_msg(msg);
+        fwrite(msg, 1, strlen(msg), chat_log_fp);
+    }
+
     pthread_mutex_lock(&mutex);
     for (i = 0; i < client_cnt; i++)
     {
@@ -152,9 +165,9 @@ void *handle_cilent(void *arg)
             break;
         }
     }
-    printf("<현재 인원: %d/%d명>\n", client_cnt, MAX_CLIENT_NUM);
-
+    printf("[현재 인원: %d / %d명]\n\n", client_cnt, MAX_CLIENT_NUM);
     pthread_mutex_unlock(&mutex);
+
     close(client_socket);
     return NULL;
 }
@@ -163,9 +176,10 @@ void *handle_cilent(void *arg)
 void send_entrance_msg(char* msg)
 {
     int i;
+    int len = strlen(msg);
     pthread_mutex_lock(&mutex);
     for (i=0; i<client_cnt; i++) {      // broadcast to all clients
-        write(client_sockets[i], msg, strlen(msg));
+        write(client_sockets[i], msg, len);
     }
     pthread_mutex_unlock(&mutex);
 }
@@ -174,20 +188,25 @@ void send_entrance_msg(char* msg)
 void send_exit_msg(char* msg)
 {
     int i;
+    int len = strlen(msg);
+        // test code
+        // printf("msg: %s\nlen: %d", msg, len);
     pthread_mutex_lock(&mutex);
-    for (i=0; i<client_cnt; i++) {
-        write(client_sockets[i], msg, strlen(msg));
+    for (i=0; i<client_cnt; i++) {      // broadcast to all clients
+        write(client_sockets[i], msg, len);
     }
+    printf("%s", msg);
     client_cnt--;
     pthread_mutex_unlock(&mutex);
 }
 
 
-void send_msg(char *msg, int len)
+void send_msg(char *msg)
 {
     int i;
     // size_t j;
     pthread_mutex_lock(&mutex);
+
     // 채팅방의 모든 client들에게 (복호화된) 메시지 전송
     // Base64 Encoded text -> #1. Base64 Decoding -> Binary -> #2. AES Decryption -> origin text
     for (i = 0; i < client_cnt; i++) {

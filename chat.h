@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <pthread.h>
 #include <time.h>
+#include <signal.h>
 #include "AES.h"
 #include "pkcs7_padding.h"
 #include "base64.h"
@@ -30,7 +31,11 @@ extern int client_cnt;
 // ANSI Escape: \033
 // font code: [0;33m        {30, 31, 32, 33, 34, 35, 36, 37} = {Black, Red, Green, Yellow, Blue, Purple, Cyan, White}
 // font reset: \033[0m
-char* entrance_msg_font = "\033[0;33m";    // normal & yellow
-char* exit_msg_font = "\033[0;31m";        // normal & red
-char* reset_font = "\033[0m";              // return to default
+// const char* entrance_msg_font = "\033[0;33m";    // normal & yellow
+// const char* exit_msg_font = "\033[0;31m";        // normal & red
+// const char* reset_font = "\033[0m";              // return to default
+
+#define entrance_msg_font "\033[0;33m"    // normal & yellow
+#define exit_msg_font "\033[0;31m"        // normal & red
+#define reset_font "\033[0m"              // return to default
 

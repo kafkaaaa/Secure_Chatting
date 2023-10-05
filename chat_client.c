@@ -1,5 +1,4 @@
 #include "chat.h"
-#include <signal.h>
 // #include <termios.h>    // to turn off echo in terminal
 
 void *send_msg(void *arg);
@@ -11,6 +10,8 @@ void *send_entrance_msg(int sock);
 void make_entrance_msg(char* entrance_msg);
 void make_exit_msg(char* exit_msg);
 void encrypt_msg(uint8_t plain[], uint8_t result[]);
+void clear_buffer();
+// void int_handler(int sig);
 
 char name[LEN_LIMIT];
 char server_port[LEN_LIMIT];
@@ -33,14 +34,9 @@ int main(int argc, char *argv[])
     // /* */
 
 
-    // /* ignore 'ctrl + c' */
-    // signal(SIGINT, SIG_IGN);
-    // /* */
-
-
     int sock;
     struct sockaddr_in serv_addr;
-    pthread_t send_thread, receive_thread;
+    pthread_t send_thread, recv_thread;
     void *thread_return;
 
     if (argc != 4) {
@@ -64,16 +60,20 @@ int main(int argc, char *argv[])
     serv_addr.sin_addr.s_addr = inet_addr(argv[1]);
     serv_addr.sin_port = htons(atoi(argv[2]));
 
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == -1)
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == -1) {
         error_handling("connect error");
+    }
 
     print_client_info();
 
     pthread_create(&send_thread, NULL, send_msg, (void *)&sock);
-    pthread_create(&receive_thread, NULL, recv_msg, (void *)&sock);
+    pthread_create(&recv_thread, NULL, recv_msg, (void *)&sock);
+
     pthread_join(send_thread, &thread_return);
-    pthread_join(receive_thread, &thread_return);
+    pthread_join(recv_thread, &thread_return);
+
     close(sock);
+
     return 0;
 }
 
@@ -93,6 +93,7 @@ void *send_msg(void *arg)
     {
         // fgets(msg, MSG_LEN_LIMIT, stdin);
         scanf(" %[^\n]s", msg);     // [^\n] = \n이 나오기 전 까지 모든 문자열을 받겠다는 의미.
+        clear_buffer();
         strcat(msg, "\n");
 
         // client exit
@@ -109,27 +110,28 @@ void *send_msg(void *arg)
         // #1. AES-256 Encryption
         uint8_t* encrypted_msg = (uint8_t*) calloc(MSG_LEN_LIMIT + 16, sizeof(uint8_t));
         encrypt_msg(dialog_msg, encrypted_msg);
-            // printf("-----------------------------------------------------------------------\n");
-            // printf("[암호화 결과] = ");
-            // for (i=0; i<strlen(encrypted_msg); i++) {
-            //     printf("%hhx", encrypted_msg[i]);
-            // }
-            // puts("");
+            printf("-----------------------------------------------------------------------\n");
+            printf("[암호화 결과] = ");
+            for (i=0; i<strlen(encrypted_msg); i++) {
+                printf("%hhx", encrypted_msg[i]);
+            }
+            puts("");
 
         // #2. Base64 Encoding
         char* base64_msg = (char*) calloc(MSG_LEN_LIMIT + 16, sizeof(char));
-        // char base64_msg[MSG_LEN_LIMIT] = {0, };
         int ret = base64_encoder(encrypted_msg, strlen(encrypted_msg), base64_msg, MSG_LEN_LIMIT);
-            // if (ret <= 0) printf("[base64 encoding ERROR!!!]");
-            // else printf("[인코딩 결과] = %s\n", base64_msg);
-            // printf("-----------------------------------------------------------------------\n");
+            if (ret <= 0) printf("[base64 encoding ERROR!!!]");
+            else printf("[인코딩 결과] = %s\n", base64_msg);
+            printf("-----------------------------------------------------------------------\n");
 
         write(sock, base64_msg, strlen(base64_msg));
         free(encrypted_msg);
         free(base64_msg);
     }
 
-    send_exit_msg(sock);
+    // // client exit
+    // write(sock, NULL, 1);
+    // send_exit_msg(sock);
 
     return NULL;
 }
@@ -148,12 +150,14 @@ void *send_entrance_msg(int sock)
 // 클라이언트 퇴장 메시지
 void *send_exit_msg(int sock)
 {
-    char exit_msg[MSG_LEN_LIMIT];
+    int len = 2 * LEN_LIMIT + 40;
+    char exit_msg[len];
     make_exit_msg(exit_msg);
-    // client_cnt--;
-    write(sock, exit_msg, strlen(exit_msg));
+        // printf("\n[TEST] %s\n", exit_msg);
 
+    write(sock, exit_msg, strlen(exit_msg));
     close(sock);
+
     exit(0);
 }
 
@@ -161,21 +165,23 @@ void *send_exit_msg(int sock)
 /* 메시지 수신 */
 void *recv_msg(void *arg)
 {
-    int sock = *((int *)arg);
-    char dialog_msg[MSG_LEN_LIMIT + 32];
     int msg_len;
+    int sock = *((int *)arg);
+    char recv_msg[200] = {0, };
+    // char* recv_msg = (char*)calloc(200, sizeof(char));
 
     while (1)
     {
-        msg_len = read(sock, dialog_msg, LEN_LIMIT + MSG_LEN_LIMIT - 1);
-        // msg_len = read(sock, dialog_msg, LEN_LIMIT + MSG_LEN_LIMIT);
+        // msg_len = read(sock, recv_msg, LEN_LIMIT + MSG_LEN_LIMIT - 1);
+        msg_len = read(sock, recv_msg, 200 - 1);
         if (msg_len == -1) {
             return (void*)-1;
         }
-        dialog_msg[msg_len] = 0;
-        fputs(dialog_msg, stdout);
+        recv_msg[msg_len] = 0;
+        fputs(recv_msg, stdout);
     }
 
+    free(recv_msg);
     return NULL;
 }
 
@@ -202,41 +208,39 @@ void error_handling(char *msg)
 }
 
 
-/* client 연결(입장) 시 메시지 */
 void make_entrance_msg(char* entrance_msg)
 {
     char* temp = (char*) calloc(MSG_LEN_LIMIT, sizeof(char));
     strcat(entrance_msg, entrance_msg_font);
     sprintf(temp, "※ [%s] (%s)님이 입장하셨습니다.", name, client_ip);
     strcat(entrance_msg, temp);
+    free(temp);
 
     // add current time 
     time_t timer = time(NULL);
     t = localtime(&timer);
     sprintf(current_time, " (%d/%d/%d  %02d:%02d:%02d)\n", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
                                                            t->tm_hour + 9,    t->tm_min,     t->tm_sec);
-
     strcat(entrance_msg, current_time);
     strcat(entrance_msg, reset_font);
     strcat(entrance_msg, "\n");
 }
 
 
-/* client exit msg 작성 */
 void make_exit_msg(char* exit_msg)
 {
-    char* temp = (char*) calloc(MSG_LEN_LIMIT, sizeof(char));
-
+    int len = strlen(exit_msg);
+    char* temp = (char*) calloc(len + 40, sizeof(char));
     strcat(exit_msg, exit_msg_font);
-    sprintf(temp, "\n※ [%s] (%s)님이 퇴장하셨습니다.", name, client_ip);
+    sprintf(temp, "※ [%s] (%s)님이 퇴장하셨습니다.", name, client_ip);
     strcat(exit_msg, temp);
+    free(temp);
 
     // add current time 
     time_t timer = time(NULL);
     t = localtime(&timer);
-    sprintf(current_time, " (%d/%d/%d  %02d:%02d:%02d)\n",
-    t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour + 9, t->tm_min, t->tm_sec);
-
+    sprintf(current_time, " (%d/%d/%d  %02d:%02d:%02d)\n", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+                                                           t->tm_hour + 9,    t->tm_min,     t->tm_sec);
     strcat(exit_msg, current_time);
     strcat(exit_msg, reset_font);
     strcat(exit_msg, "\n");
@@ -248,7 +252,7 @@ void encrypt_msg(uint8_t plain[], uint8_t result[])
 {
     size_t i;
     size_t plain_len = strlen(plain);
-    size_t key_len = strlen(key);       // Length of Key
+    size_t key_len = strlen(key);
     size_t hex_plain_len = plain_len;
     if (plain_len % 16) {
         hex_plain_len += 16 - (plain_len % 16);
@@ -279,4 +283,10 @@ void encrypt_msg(uint8_t plain[], uint8_t result[])
 
     memcpy(result, padded_plain, hex_plain_len);
 }
+
+
+void clear_buffer() {
+    while (getchar() != '\n');
+}
+
 

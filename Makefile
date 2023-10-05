@@ -5,6 +5,7 @@ LDFLAGS = -lpthread
 OBJ = AES.o pkcs7_padding.o base64.o
 SRC = chat_server.c chat_client.c
 HEADER = chat.h AES.h base64.h pkcs7_padding.h
+LOGFILE = log.bin
 
 TARGET = server client
 
@@ -28,6 +29,7 @@ base64.o : base64.c base64.h
 clean :
 	rm -f *.o
 	rm -f $(TARGET)
+	rm -f $(LOGFILE)
 
 .PHONY : clean
 
