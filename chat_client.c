@@ -9,7 +9,7 @@ void *send_exit_msg(int sock);
 void *send_entrance_msg(int sock);
 void make_entrance_msg(char* entrance_msg);
 void make_exit_msg(char* exit_msg);
-void encrypt_msg(uint8_t plain[], uint8_t result[]);
+size_t encrypt_msg(uint8_t plain[], uint8_t result[]);
 void clear_buffer();
 // void int_handler(int sig);
 
@@ -83,7 +83,7 @@ void *send_msg(void *arg)
 {
     uint8_t i;
     int sock = *((int *)arg);
-    char msg[MSG_LEN_LIMIT];
+    // char msg[MSG_LEN_LIMIT];
     char dialog_msg[200];
 
     printf("┌───────────── Eglobal Talk ─────────────┐\n");
@@ -91,15 +91,17 @@ void *send_msg(void *arg)
 
     while (1)
     {
+        char* msg = (char*)calloc(MSG_LEN_LIMIT, sizeof(char));
         // fgets(msg, MSG_LEN_LIMIT, stdin);
         scanf(" %[^\n]s", msg);     // [^\n] = \n이 나오기 전 까지 모든 문자열을 받겠다는 의미.
+        // strcat(msg, "\n");
+        msg[strlen(msg)] = '\n';
         clear_buffer();
-        strcat(msg, "\n");
 
-        // client exit
+        // client exit 처리
         if (strcmp(msg, "X\n") == 0) {
-            write(sock, NULL, 1);
-            send_exit_msg(sock);
+                // // test code
+                // printf("[TEST] client exit occured!\n");
             break;
         }
 
@@ -107,31 +109,50 @@ void *send_msg(void *arg)
         /* plain text -> #1. AES-256 Encryption -> Binary data -> #2. Base64 Encoding */
         sprintf(dialog_msg, "[%s]: %s", name, msg);   // 이름과 메시지 함께 인코딩+암호화
 
+        // free(msg);
+
         // #1. AES-256 Encryption
-        uint8_t* encrypted_msg = (uint8_t*) calloc(MSG_LEN_LIMIT + 16, sizeof(uint8_t));
-        encrypt_msg(dialog_msg, encrypted_msg);
-            printf("-----------------------------------------------------------------------\n");
-            printf("[암호화 결과] = ");
-            for (i=0; i<strlen(encrypted_msg); i++) {
-                printf("%hhx", encrypted_msg[i]);
-            }
-            puts("");
+        uint8_t* encrypted_msg = (uint8_t*) calloc(400, sizeof(uint8_t));
+        size_t enc_len = encrypt_msg(dialog_msg, encrypted_msg);
+                // // test code
+                // printf("-----------------------------------------------------------------------");
+                // // printf("\033[0;32m[암호화 길이] = %zd\n", strlen(encrypted_msg));
+                // printf("\033[0;32m\n[암호화 길이] = %zd\n", enc_len);
+                // printf("[암호화 결과] = ");
+                // // for (i=0; i<strlen(encrypted_msg); i++) {
+                // for (i=0; i<enc_len; i++) {
+                //     printf("%02hhx ", encrypted_msg[i]);
+                // }
+                // puts("");
+
 
         // #2. Base64 Encoding
-        char* base64_msg = (char*) calloc(MSG_LEN_LIMIT + 16, sizeof(char));
-        int ret = base64_encoder(encrypted_msg, strlen(encrypted_msg), base64_msg, MSG_LEN_LIMIT);
-            if (ret <= 0) printf("[base64 encoding ERROR!!!]");
-            else printf("[인코딩 결과] = %s\n", base64_msg);
-            printf("-----------------------------------------------------------------------\n");
+        // char* base64_msg = (char*) calloc(200, sizeof(char));
+        // uint8_t* base64_msg = (uint8_t*) calloc(200, sizeof(uint8_t));
+        char* str = encrypted_msg;
+        char base64_msg[MSG_LEN_LIMIT] = { 0, };
 
-        write(sock, base64_msg, strlen(base64_msg));
+        // int ret = base64_encoder(str, strlen(str), base64_msg, MSG_LEN_LIMIT);
+        int ret = base64_encoder(str, enc_len, base64_msg, MSG_LEN_LIMIT);
+        // int ret = base64_encoder(encrypted_msg, strlen(encrypted_msg), base64_msg, MSG_LEN_LIMIT);
+                // // test code
+                // if (ret <= 0) printf("[base64 encoding ERROR!!!]");
+                // else {
+                //     // printf("[인코딩 길이] = %zd\n", strlen(base64_msg));
+                //     printf("[인코딩 길이] = %d\n", ret);
+                //     printf("[인코딩 결과] = %s\n\033[0m", base64_msg);
+                // }
+                // printf("-----------------------------------------------------------------------\n");
+
+        // write(sock, base64_msg, strlen(base64_msg));
+        write(sock, base64_msg, ret);
         free(encrypted_msg);
-        free(base64_msg);
+        // free(base64_msg);
+        free(msg);
     }
 
-    // // client exit
-    // write(sock, NULL, 1);
-    // send_exit_msg(sock);
+    // client exit
+    send_exit_msg(sock);
 
     return NULL;
 }
@@ -150,14 +171,24 @@ void *send_entrance_msg(int sock)
 // 클라이언트 퇴장 메시지
 void *send_exit_msg(int sock)
 {
-    int len = 2 * LEN_LIMIT + 40;
-    char exit_msg[len];
+    char* exit_flag = "exit";
+    write(sock, exit_flag, strlen(exit_flag));
+
+    // write(sock, NULL, 1);
+    // if (write(sock, NULL, sizeof(NULL)) == -1) {
+    //     puts("\n[ERROR] fail to send NULL !!\n");
+    // }
+
+    char* exit_msg = calloc(200, sizeof(char));
     make_exit_msg(exit_msg);
-        // printf("\n[TEST] %s\n", exit_msg);
+            // test code
+            printf("%s", exit_msg);
+            // printf("\nexit_msg_len= %zd\nexit_msg= %s\n", strlen(exit_msg), exit_msg);
 
     write(sock, exit_msg, strlen(exit_msg));
-    close(sock);
+    free(exit_msg);
 
+    close(sock);
     exit(0);
 }
 
@@ -167,21 +198,29 @@ void *recv_msg(void *arg)
 {
     int msg_len;
     int sock = *((int *)arg);
-    char recv_msg[200] = {0, };
-    // char* recv_msg = (char*)calloc(200, sizeof(char));
+    // char msg[200] = {0, };
+    char* msg = (char*)calloc(200, sizeof(char));
 
     while (1)
     {
-        // msg_len = read(sock, recv_msg, LEN_LIMIT + MSG_LEN_LIMIT - 1);
-        msg_len = read(sock, recv_msg, 200 - 1);
+        // msg_len = read(sock, msg, LEN_LIMIT + MSG_LEN_LIMIT - 1);
+        // msg_len = read(sock, msg, sizeof(msg) - 1);
+        msg_len = read(sock, msg, MSG_LEN_LIMIT - 1);
         if (msg_len == -1) {
-            return (void*)-1;
+            return (void*)-1;   // msg recv error
         }
-        recv_msg[msg_len] = 0;
-        fputs(recv_msg, stdout);
+        msg[msg_len] = 0;       // EOF 표시
+
+            // test code
+            // printf("\nmsg_len: %d\t msg: %zd\n", msg_len, strlen(msg));
+
+        // printf("\n%s", msg);
+        fputs(msg, stdout);
+
+        memset(msg, 0, 200);
     }
 
-    free(recv_msg);
+    free(msg);
     return NULL;
 }
 
@@ -219,7 +258,7 @@ void make_entrance_msg(char* entrance_msg)
     // add current time 
     time_t timer = time(NULL);
     t = localtime(&timer);
-    sprintf(current_time, " (%d/%d/%d  %02d:%02d:%02d)\n", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+    sprintf(current_time, " (%d/%d/%d  %02d:%02d:%02d)\n"   , t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
                                                            t->tm_hour + 9,    t->tm_min,     t->tm_sec);
     strcat(entrance_msg, current_time);
     strcat(entrance_msg, reset_font);
@@ -248,11 +287,12 @@ void make_exit_msg(char* exit_msg)
 
 
 /* AES-256, CBC 암호화 함수 */
-void encrypt_msg(uint8_t plain[], uint8_t result[])
+size_t encrypt_msg(uint8_t plain[], uint8_t result[])
 {
     size_t i;
     size_t plain_len = strlen(plain);
     size_t key_len = strlen(key);
+
     size_t hex_plain_len = plain_len;
     if (plain_len % 16) {
         hex_plain_len += 16 - (plain_len % 16);
@@ -268,6 +308,14 @@ void encrypt_msg(uint8_t plain[], uint8_t result[])
     memset(padded_plain, 0, hex_plain_len);
     memset(padded_key, 0, hex_key_len);
 
+
+            // // test code
+            // printf("-----------------------------------------------------------------------\n");
+            // printf("[평문] =  %s", plain);
+            // printf("plain_len= %zd\t key_len= %zd\t -> 패딩 이후: %zd\t %zd\n",
+            //             plain_len, key_len, hex_plain_len, hex_key_len);
+
+
     for (i=0; i<plain_len; i++)
         padded_plain[i] = plain[i];
     
@@ -281,7 +329,13 @@ void encrypt_msg(uint8_t plain[], uint8_t result[])
     AES_init_ctx_iv(&ctx, padded_key, iv);
     AES_CBC_encrypt_buffer(&ctx, padded_plain, hex_plain_len);
 
-    memcpy(result, padded_plain, hex_plain_len);
+    for (i=0; i<hex_plain_len; i++) {
+        result[i] = padded_plain[i];
+    }
+    
+    return hex_plain_len;
+
+    // memcpy(result, padded_plain, hex_plain_len);
 }
 
 

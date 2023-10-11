@@ -2,13 +2,14 @@
 #include <netinet/in.h>
 
 void *handle_cilent(void *arg);
+// void send_msg(char *msg, size_t msg_len);
 void send_msg(char *msg);
 void send_entrance_msg(char *msg);
 void send_exit_msg(char *msg);
 void error_handling(char *msg);
 char *server_state(int count);
 void print_server_info(char port[]);
-void decrypt_msg(char* msg, char* result);
+void decrypt_msg(char* msg, int len, char* result);
 
 int client_sockets[MAX_CLIENT_NUM];
 int client_cnt;
@@ -39,7 +40,7 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
     }
 
     print_server_info(argv[1]);
-    chat_log_fp = fopen(CHAT_LOG_FNAME, "wb");
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "wt");
 
     // Mutex는 화장실이 1개 있는 상황과 비슷하다.
     pthread_mutex_init(&mutex, NULL);
@@ -113,46 +114,62 @@ void *handle_cilent(void *arg)
     int client_socket = *((int *)arg);
     int i, msg_len = 0;
     char msg[200];
-    chat_log_fp = fopen(CHAT_LOG_FNAME, "ab");   // append
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "at");   // append
 
 
     // 처음 입장할 때 알림 메시지
     msg_len = read(client_socket, msg, sizeof(msg));
     send_entrance_msg(msg);
-    fwrite(msg, sizeof(char), strlen(msg), chat_log_fp);
-    // fwrite(msg, 1, msg_len, chat_log_fp);
-
-
-    // 일반 대화 메시지
-    while (1) {
-        // char* normal_msg = calloc(MSG_LEN_LIMIT, sizeof(char));
-        msg_len = read(client_socket, msg, sizeof(msg));
-        // msg_len = read(client_socket, normal_msg, sizeof(normal_msg));
-        // if (msg_len == -1) {
-        //     printf("**message read ERROR**\n");
-        //     break;
-        // }
-        if (msg == NULL) break;
-        // if (normal_msg == NULL) break;
-        if (msg_len == -1 || msg_len == 0) break;    // -1: ERROR, 0: EOF
-
-        send_msg(msg);
-        // send_msg(normal_msg);
-        fwrite(msg, sizeof(char), strlen(msg), chat_log_fp);
-        // fwrite(normal_msg, sizeof(char), strlen(normal_msg), chat_log_fp);
-        // free(normal_msg);
+    if (fwrite(msg, sizeof(char), strlen(msg), chat_log_fp) != strlen(msg)) {
+        printf("[ERROR] write to log file\n");
     }
 
 
-    // 클라이언트 퇴장 메시지
-    msg_len = read(client_socket, msg, sizeof(msg));
-    if (msg_len == -1) {
+    // 메시지 받아서 전송
+    while (1) {
+        char* normal_msg = (char*)calloc(MSG_LEN_LIMIT, sizeof(char));
+        msg_len = read(client_socket, normal_msg, MSG_LEN_LIMIT - 1);
+                // // test code
+                // printf("[TEST] msg_len= %d\n", msg_len);
+        // if (normal_msg == NULL) {   // client exit
+        // if (normal_msg == "exit") {   // client exit
+
+
+        // if (msg_len < AES_BLOCKLEN) {   // client exit
+        if (strncmp(normal_msg, "exit", 4) == 0) {   // client exit
+                // test code
+                printf("[TEST] client exit occur !\n");
+            break;
+        }
+        if (msg_len == -1 || msg_len == 0) { // ERROR or EOF
+            break;
+        }
+
+
+                // printf("[일반 대화 전달]");
+        send_msg(normal_msg);
+        chat_log_fp = fopen(CHAT_LOG_FNAME, "ab");   // append      // TODO:
+        fwrite(normal_msg, sizeof(char), msg_len, chat_log_fp);
+        
+        free(normal_msg);
+    }
+
+
+    // 클라이언트 퇴장 처리
+    char* exit_msg = (char*)calloc(200, sizeof(char));
+    msg_len = read(client_socket, exit_msg, MSG_LEN_LIMIT - 1);
+    printf("%s\n", exit_msg);
+    if (msg_len <= 0) {
         printf("\n**message read ERROR**\n");
     }
     else {
-        send_exit_msg(msg);
-        fwrite(msg, 1, strlen(msg), chat_log_fp);
+            // // test code
+            // printf("exit_msg_len= %d, exit_msg= %s\n", msg_len, exit_msg);
+        send_exit_msg(exit_msg);
+        fwrite(msg, sizeof(char), strlen(exit_msg), chat_log_fp);
     }
+    free(exit_msg);
+
 
     pthread_mutex_lock(&mutex);
     for (i = 0; i < client_cnt; i++)
@@ -169,6 +186,7 @@ void *handle_cilent(void *arg)
     pthread_mutex_unlock(&mutex);
 
     close(client_socket);
+
     return NULL;
 }
 
@@ -189,45 +207,64 @@ void send_exit_msg(char* msg)
 {
     int i;
     int len = strlen(msg);
-        // test code
-        // printf("msg: %s\nlen: %d", msg, len);
+        // // test code
+        // printf("exit msg: %s\nlen: %d\n", msg, len);
     pthread_mutex_lock(&mutex);
     for (i=0; i<client_cnt; i++) {      // broadcast to all clients
         write(client_sockets[i], msg, len);
     }
-    printf("%s", msg);
     client_cnt--;
+    // printf("%s\n", msg);
     pthread_mutex_unlock(&mutex);
 }
 
 
+// void send_msg(char *msg, size_t msg_len)
 void send_msg(char *msg)
 {
-    int i;
-    // size_t j;
+    int i, j;
     pthread_mutex_lock(&mutex);
 
-    // 채팅방의 모든 client들에게 (복호화된) 메시지 전송
     // Base64 Encoded text -> #1. Base64 Decoding -> Binary -> #2. AES Decryption -> origin text
-    for (i = 0; i < client_cnt; i++) {
-      
         // #1. Base64 Decoding
         char base64_msg[MSG_LEN_LIMIT] = {0, };
         char decoded_msg[MSG_LEN_LIMIT] = {0, };
         char origin_msg[MSG_LEN_LIMIT] = {0, };
-        size_t len = strlen(msg);
-        base64_decoder(msg, len, decoded_msg, MSG_LEN_LIMIT);
-            // printf("[디코딩 결과] = ");
-            //     for (j=0; j<strlen(decoded_msg); j++) {
-            //         printf("%hhx", decoded_msg[j]);
-            //     }
-            //     puts("");
+
+        int decoded_len = base64_decoder(msg, strlen(msg), decoded_msg, MSG_LEN_LIMIT);
+        // base64_decoder(msg, msg_len, decoded_msg, MSG_LEN_LIMIT);
+                // // test code
+                // printf("\n-----------------------------------------------------------------------\n");
+                // // printf("\033[0;32m[디코딩 대상] = %s\n", decoded_msg);
+                // printf("\033[0;32m[디코딩 대상] = %s\n", msg);
+                // printf("[디코딩 결과] = ");
+                // // for (j=0; j<strlen(decoded_msg); j++) {
+                // for (j=0; j<decoded_len; j++) {
+                //     printf("%02hhx ", decoded_msg[j]);
+                // }
+                // puts("");
+
+
 
         // #2. AES Decryption
-        decrypt_msg(decoded_msg, origin_msg);
-            // printf("[복호화 결과] = %s\n", origin_msg);
+        decrypt_msg(decoded_msg, decoded_len, origin_msg);
+                // // test code
+                // // printf("[복호화 길이] = %zd\n", strlen(decoded_msg));
+                // printf("[복호화 길이] = %d\n", decoded_len);
+                // // if (strlen(origin_msg) == 0) {
+                // if (origin_msg == NULL) {
+                //     printf("\033[1;31m[복호화 오류 !!!]\n");
+                // }
+                // else {
+                //     // printf("[test] origin_msg_len = %zd\n", strlen(origin_msg));
+                //     printf("[복호화 결과] = %s\033[0m", origin_msg);
+                // }
+                // printf("\n-----------------------------------------------------------------------\n");
 
-        write(client_sockets[i], origin_msg, strlen(origin_msg));
+    // 채팅방의 모든 client들에게 (복호화된) 메시지 전송
+    for (i = 0; i < client_cnt; i++) {
+        // write(client_sockets[i], origin_msg, strlen(origin_msg));
+        write(client_sockets[i], origin_msg, decoded_len);
     }
     pthread_mutex_unlock(&mutex);
 }
@@ -265,12 +302,11 @@ void print_server_info(char* port)
 
 
 /* AES Decryption */
-void decrypt_msg(char* decoded_msg, char* result)
+void decrypt_msg(char* decoded_msg, int decoded_msg_len, char* result)
 {
     size_t i;
-    size_t enc_len = strlen(decoded_msg);
-        // test code
-        // printf("복호화 대상 길이: %zd\n", enc_len);
+    // size_t enc_len = strlen(decoded_msg);    // 여기가 문제!! -> 암호화 결과에 00 (0x00)이 있으면 strlen에서 멈춰버림.
+    size_t enc_len = decoded_msg_len;           // strlen대신 함수 인자로 길이를 받아버려서 해결
     size_t key_len = strlen(key);
 
     size_t hex_key_len = key_len;
@@ -293,8 +329,6 @@ void decrypt_msg(char* decoded_msg, char* result)
 
     if (enc_len % 16 != 0) {
         size_t actual_data_len = pkcs7_padding_data_length(decoded_msg, enc_len, AES_BLOCKLEN);
-            // printf("실제 평문 길이: %zd\n\n", actual_data_len);
-
         memcpy(result, decoded_msg, actual_data_len);
     }
     else {
