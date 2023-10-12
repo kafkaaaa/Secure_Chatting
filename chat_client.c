@@ -204,18 +204,18 @@ void *recv_msg(void *arg)
     while (1)
     {
         // msg_len = read(sock, msg, LEN_LIMIT + MSG_LEN_LIMIT - 1);
-        // msg_len = read(sock, msg, sizeof(msg) - 1);
-        msg_len = read(sock, msg, MSG_LEN_LIMIT - 1);
+        // msg_len = read(sock, msg, MSG_LEN_LIMIT - 1);
+        msg_len = read(sock, msg, 200 - 1);
         if (msg_len == -1) {
             return (void*)-1;   // msg recv error
         }
         msg[msg_len] = 0;       // EOF 표시
 
-            // test code
+            // // test code
             // printf("\nmsg_len: %d\t msg: %zd\n", msg_len, strlen(msg));
 
-        // printf("\n%s", msg);
-        fputs(msg, stdout);
+        printf("\n%s", msg);
+        // fputs(msg, stdout);
 
         memset(msg, 0, 200);
     }

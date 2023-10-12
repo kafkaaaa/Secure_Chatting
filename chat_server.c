@@ -3,7 +3,7 @@
 
 void *handle_cilent(void *arg);
 // void send_msg(char *msg, size_t msg_len);
-void send_msg(char *msg);
+void send_msg(char *msg, ssize_t msg_len);
 void send_entrance_msg(char *msg);
 void send_exit_msg(char *msg);
 void error_handling(char *msg);
@@ -14,7 +14,7 @@ void decrypt_msg(char* msg, int len, char* result);
 int client_sockets[MAX_CLIENT_NUM];
 int client_cnt;
 int flag;
-FILE* chat_log_fp;  // 채팅 로그 저장
+FILE* chat_log_fp;
 pthread_mutex_t mutex;
 
 
@@ -40,7 +40,12 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
     }
 
     print_server_info(argv[1]);
-    chat_log_fp = fopen(CHAT_LOG_FNAME, "wt");
+    
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "wb");
+    if (chat_log_fp == NULL) {
+        printf("[ERROR] log file open fail!!\n");
+        return -1;
+    }
 
     // Mutex는 화장실이 1개 있는 상황과 비슷하다.
     pthread_mutex_init(&mutex, NULL);
@@ -114,21 +119,19 @@ void *handle_cilent(void *arg)
     int client_socket = *((int *)arg);
     int i, msg_len = 0;
     char msg[200];
-    chat_log_fp = fopen(CHAT_LOG_FNAME, "at");   // append
-
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "a");
+    if (chat_log_fp == NULL) {
+        printf("[ERROR] log file open error !!\n");
+    }
 
     // 처음 입장할 때 알림 메시지
     msg_len = read(client_socket, msg, sizeof(msg));
     send_entrance_msg(msg);
-    if (fwrite(msg, sizeof(char), strlen(msg), chat_log_fp) != strlen(msg)) {
-        printf("[ERROR] write to log file\n");
-    }
-
 
     // 메시지 받아서 전송
     while (1) {
         char* normal_msg = (char*)calloc(MSG_LEN_LIMIT, sizeof(char));
-        msg_len = read(client_socket, normal_msg, MSG_LEN_LIMIT - 1);
+        ssize_t msg_len = read(client_socket, normal_msg, MSG_LEN_LIMIT - 1);
                 // // test code
                 // printf("[TEST] msg_len= %d\n", msg_len);
         // if (normal_msg == NULL) {   // client exit
@@ -137,20 +140,15 @@ void *handle_cilent(void *arg)
 
         // if (msg_len < AES_BLOCKLEN) {   // client exit
         if (strncmp(normal_msg, "exit", 4) == 0) {   // client exit
-                // test code
-                printf("[TEST] client exit occur !\n");
+                // // test code
+                // printf("[TEST] client exit occur !\n");
             break;
         }
         if (msg_len == -1 || msg_len == 0) { // ERROR or EOF
             break;
         }
 
-
-                // printf("[일반 대화 전달]");
-        send_msg(normal_msg);
-        chat_log_fp = fopen(CHAT_LOG_FNAME, "ab");   // append      // TODO:
-        fwrite(normal_msg, sizeof(char), msg_len, chat_log_fp);
-        
+        send_msg(normal_msg, msg_len);
         free(normal_msg);
     }
 
@@ -159,6 +157,7 @@ void *handle_cilent(void *arg)
     char* exit_msg = (char*)calloc(200, sizeof(char));
     msg_len = read(client_socket, exit_msg, MSG_LEN_LIMIT - 1);
     printf("%s\n", exit_msg);
+
     if (msg_len <= 0) {
         printf("\n**message read ERROR**\n");
     }
@@ -166,10 +165,8 @@ void *handle_cilent(void *arg)
             // // test code
             // printf("exit_msg_len= %d, exit_msg= %s\n", msg_len, exit_msg);
         send_exit_msg(exit_msg);
-        fwrite(msg, sizeof(char), strlen(exit_msg), chat_log_fp);
     }
     free(exit_msg);
-
 
     pthread_mutex_lock(&mutex);
     for (i = 0; i < client_cnt; i++)
@@ -194,11 +191,22 @@ void *handle_cilent(void *arg)
 void send_entrance_msg(char* msg)
 {
     int i;
-    int len = strlen(msg);
+    size_t msg_len = strlen(msg);
+            // // test code
+            // printf("strlen(msg)= %zd\n", msg_len);
+    
     pthread_mutex_lock(&mutex);
-    for (i=0; i<client_cnt; i++) {      // broadcast to all clients
-        write(client_sockets[i], msg, len);
+
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "a");  // append binary
+    if (fwrite(msg, sizeof(char), msg_len, chat_log_fp) != msg_len) {
+        printf("[ERROR] write log file\n");
     }
+    fflush(chat_log_fp);
+
+    for (i=0; i<client_cnt; i++) {      // broadcast to all clients
+        write(client_sockets[i], msg, msg_len);
+    }
+
     pthread_mutex_unlock(&mutex);
 }
 
@@ -206,12 +214,19 @@ void send_entrance_msg(char* msg)
 void send_exit_msg(char* msg)
 {
     int i;
-    int len = strlen(msg);
+    size_t msg_len = strlen(msg);
         // // test code
         // printf("exit msg: %s\nlen: %d\n", msg, len);
     pthread_mutex_lock(&mutex);
+
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "a");  // append binary
+    if (fwrite(msg, sizeof(char), msg_len, chat_log_fp) != msg_len) {
+        printf("[ERROR] write log file\n");
+    }
+    fflush(chat_log_fp);
+
     for (i=0; i<client_cnt; i++) {      // broadcast to all clients
-        write(client_sockets[i], msg, len);
+        write(client_sockets[i], msg, msg_len);
     }
     client_cnt--;
     // printf("%s\n", msg);
@@ -220,9 +235,19 @@ void send_exit_msg(char* msg)
 
 
 // void send_msg(char *msg, size_t msg_len)
-void send_msg(char *msg)
+void send_msg(char *msg, ssize_t msg_len)
 {
     int i, j;
+
+    // record chatting msg in log file 
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "a");
+    if (chat_log_fp == NULL) {
+        printf("[ERROR] fail to open log file !!\n");
+    }
+    strcat(msg, "\n");
+    fwrite(msg, sizeof(uint8_t), msg_len + 1, chat_log_fp);
+    fflush(chat_log_fp);
+
     pthread_mutex_lock(&mutex);
 
     // Base64 Encoded text -> #1. Base64 Decoding -> Binary -> #2. AES Decryption -> origin text
