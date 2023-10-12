@@ -41,7 +41,7 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
 
     print_server_info(argv[1]);
     
-    chat_log_fp = fopen(CHAT_LOG_FNAME, "wb");
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "w");
     if (chat_log_fp == NULL) {
         printf("[ERROR] log file open fail!!\n");
         return -1;
@@ -119,10 +119,6 @@ void *handle_cilent(void *arg)
     int client_socket = *((int *)arg);
     int i, msg_len = 0;
     char msg[200];
-    chat_log_fp = fopen(CHAT_LOG_FNAME, "a");
-    if (chat_log_fp == NULL) {
-        printf("[ERROR] log file open error !!\n");
-    }
 
     // 처음 입장할 때 알림 메시지
     msg_len = read(client_socket, msg, sizeof(msg));
@@ -154,7 +150,8 @@ void *handle_cilent(void *arg)
 
 
     // 클라이언트 퇴장 처리
-    char* exit_msg = (char*)calloc(200, sizeof(char));
+    // char* exit_msg = (char*)calloc(200, sizeof(char));
+    char* exit_msg = (char*)calloc(MSG_LEN_LIMIT, sizeof(char));
     msg_len = read(client_socket, exit_msg, MSG_LEN_LIMIT - 1);
     printf("%s\n", exit_msg);
 
@@ -197,7 +194,7 @@ void send_entrance_msg(char* msg)
     
     pthread_mutex_lock(&mutex);
 
-    chat_log_fp = fopen(CHAT_LOG_FNAME, "a");  // append binary
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "a");
     if (fwrite(msg, sizeof(char), msg_len, chat_log_fp) != msg_len) {
         printf("[ERROR] write log file\n");
     }
@@ -219,7 +216,7 @@ void send_exit_msg(char* msg)
         // printf("exit msg: %s\nlen: %d\n", msg, len);
     pthread_mutex_lock(&mutex);
 
-    chat_log_fp = fopen(CHAT_LOG_FNAME, "a");  // append binary
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "a");
     if (fwrite(msg, sizeof(char), msg_len, chat_log_fp) != msg_len) {
         printf("[ERROR] write log file\n");
     }

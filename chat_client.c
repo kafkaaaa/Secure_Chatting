@@ -1,26 +1,26 @@
 #include "chat.h"
 // #include <termios.h>    // to turn off echo in terminal
 
-void *send_msg(void *arg);
-void *recv_msg(void *arg);
-void error_handling(char *msg);
+// void *send_msg(void *arg);
+void *send_msg(void *sock);
+// void *recv_msg(void *arg);
+void *recv_msg(void *sock);
 void print_client_info();
 void *send_exit_msg(int sock);
 void *send_entrance_msg(int sock);
-void make_entrance_msg(char* entrance_msg);
-void make_exit_msg(char* exit_msg);
+void make_entrance_msg(char* msg);
+void make_exit_msg(char* msg);
 size_t encrypt_msg(uint8_t plain[], uint8_t result[]);
+void add_current_time(char* str);
 void clear_buffer();
 // void int_handler(int sig);
 
 char name[LEN_LIMIT];
 char server_port[LEN_LIMIT];
 char current_time[LEN_LIMIT];
-char client_ip[LEN_LIMIT];
-char msg_form[LEN_LIMIT]; 
+char client_ip[LEN_LIMIT]; 
 
 int client_cnt;
-int flag;
 struct tm *t;
 
 
@@ -32,7 +32,6 @@ int main(int argc, char *argv[])
     // tm.c_lflag &= ~ECHO; // turn off echo
     // tcsetattr(STDIN_FILENO, TCSANOW, &tm);
     // /* */
-
 
     int sock;
     struct sockaddr_in serv_addr;
@@ -61,19 +60,18 @@ int main(int argc, char *argv[])
     serv_addr.sin_port = htons(atoi(argv[2]));
 
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) == -1) {
-        error_handling("connect error");
+        printf("[ERROR] connection error !!\n");
+        exit(1);
     }
 
     print_client_info();
 
     pthread_create(&send_thread, NULL, send_msg, (void *)&sock);
     pthread_create(&recv_thread, NULL, recv_msg, (void *)&sock);
-
     pthread_join(send_thread, &thread_return);
     pthread_join(recv_thread, &thread_return);
 
     close(sock);
-
     return 0;
 }
 
@@ -83,18 +81,15 @@ void *send_msg(void *arg)
 {
     uint8_t i;
     int sock = *((int *)arg);
-    // char msg[MSG_LEN_LIMIT];
     char dialog_msg[200];
 
-    printf("┌───────────── Eglobal Talk ─────────────┐\n");
+    printf("┌───────────────── Eglobal Talk ─────────────────┐\n");
     send_entrance_msg(sock);
 
     while (1)
     {
-        char* msg = (char*)calloc(MSG_LEN_LIMIT, sizeof(char));
-        // fgets(msg, MSG_LEN_LIMIT, stdin);
+        char* msg = (char*)calloc(MSG_LEN_LIMIT + 1, sizeof(char));
         scanf(" %[^\n]s", msg);     // [^\n] = \n이 나오기 전 까지 모든 문자열을 받겠다는 의미.
-        // strcat(msg, "\n");
         msg[strlen(msg)] = '\n';
         clear_buffer();
 
@@ -109,45 +104,34 @@ void *send_msg(void *arg)
         /* plain text -> #1. AES-256 Encryption -> Binary data -> #2. Base64 Encoding */
         sprintf(dialog_msg, "[%s]: %s", name, msg);   // 이름과 메시지 함께 인코딩+암호화
 
-        // free(msg);
-
         // #1. AES-256 Encryption
-        uint8_t* encrypted_msg = (uint8_t*) calloc(400, sizeof(uint8_t));
+        uint8_t* encrypted_msg = (uint8_t*) calloc(MSG_LEN_LIMIT + AES_BLOCKLEN, sizeof(uint8_t));
         size_t enc_len = encrypt_msg(dialog_msg, encrypted_msg);
-                // // test code
-                // printf("-----------------------------------------------------------------------");
-                // // printf("\033[0;32m[암호화 길이] = %zd\n", strlen(encrypted_msg));
-                // printf("\033[0;32m\n[암호화 길이] = %zd\n", enc_len);
-                // printf("[암호화 결과] = ");
-                // // for (i=0; i<strlen(encrypted_msg); i++) {
-                // for (i=0; i<enc_len; i++) {
-                //     printf("%02hhx ", encrypted_msg[i]);
-                // }
-                // puts("");
+                // test code
+                printf("-----------------------------------------------------------------------");
+                printf("\033[0;32m\n[암호화 길이] = %zd\n", enc_len);
+                printf("[암호화 결과] = ");
+                for (i=0; i<enc_len; i++) {
+                    printf("%02hhx ", encrypted_msg[i]);
+                }
+                printf("\n-----------------------------------------------------------------------\n");
 
 
         // #2. Base64 Encoding
-        // char* base64_msg = (char*) calloc(200, sizeof(char));
-        // uint8_t* base64_msg = (uint8_t*) calloc(200, sizeof(uint8_t));
-        char* str = encrypted_msg;
-        char base64_msg[MSG_LEN_LIMIT] = { 0, };
+        char* base64_msg = (char*) calloc(MSG_LEN_LIMIT, sizeof(char));
+        int ret = base64_encoder(encrypted_msg, enc_len, base64_msg, MSG_LEN_LIMIT);
+                // test code
+                if (ret <= 0) printf("[base64 encoding ERROR!!!]");
+                else {
+                    printf("[인코딩 길이] = %d\n", ret);
+                    printf("[인코딩 결과] = %s\n\033[0m", base64_msg);
+                }
+                printf("-----------------------------------------------------------------------\n");
 
-        // int ret = base64_encoder(str, strlen(str), base64_msg, MSG_LEN_LIMIT);
-        int ret = base64_encoder(str, enc_len, base64_msg, MSG_LEN_LIMIT);
-        // int ret = base64_encoder(encrypted_msg, strlen(encrypted_msg), base64_msg, MSG_LEN_LIMIT);
-                // // test code
-                // if (ret <= 0) printf("[base64 encoding ERROR!!!]");
-                // else {
-                //     // printf("[인코딩 길이] = %zd\n", strlen(base64_msg));
-                //     printf("[인코딩 길이] = %d\n", ret);
-                //     printf("[인코딩 결과] = %s\n\033[0m", base64_msg);
-                // }
-                // printf("-----------------------------------------------------------------------\n");
-
-        // write(sock, base64_msg, strlen(base64_msg));
         write(sock, base64_msg, ret);
+
         free(encrypted_msg);
-        // free(base64_msg);
+        free(base64_msg);
         free(msg);
     }
 
@@ -161,10 +145,11 @@ void *send_msg(void *arg)
 // 처음 입장시 메시지
 void *send_entrance_msg(int sock)
 {
-    char entrance_msg[MSG_LEN_LIMIT];
+    char* entrance_msg = (char*) calloc(MSG_LEN_LIMIT, sizeof(char));
     make_entrance_msg(entrance_msg);
 
     write(sock, entrance_msg, strlen(entrance_msg));
+    free(entrance_msg);
 }
 
 
@@ -179,16 +164,17 @@ void *send_exit_msg(int sock)
     //     puts("\n[ERROR] fail to send NULL !!\n");
     // }
 
-    char* exit_msg = calloc(200, sizeof(char));
+    char* exit_msg = calloc(MSG_LEN_LIMIT + 40, sizeof(char));
     make_exit_msg(exit_msg);
+    printf("%s", exit_msg);
             // test code
-            printf("%s", exit_msg);
             // printf("\nexit_msg_len= %zd\nexit_msg= %s\n", strlen(exit_msg), exit_msg);
 
     write(sock, exit_msg, strlen(exit_msg));
-    free(exit_msg);
 
+    free(exit_msg);
     close(sock);
+
     exit(0);
 }
 
@@ -198,29 +184,22 @@ void *recv_msg(void *arg)
 {
     int msg_len;
     int sock = *((int *)arg);
-    // char msg[200] = {0, };
-    char* msg = (char*)calloc(200, sizeof(char));
 
     while (1)
     {
-        // msg_len = read(sock, msg, LEN_LIMIT + MSG_LEN_LIMIT - 1);
-        // msg_len = read(sock, msg, MSG_LEN_LIMIT - 1);
-        msg_len = read(sock, msg, 200 - 1);
+        char* msg = (char*)calloc(MSG_LEN_LIMIT, sizeof(char));
+        msg_len = read(sock, msg, MSG_LEN_LIMIT - 1);
         if (msg_len == -1) {
             return (void*)-1;   // msg recv error
         }
         msg[msg_len] = 0;       // EOF 표시
-
-            // // test code
-            // printf("\nmsg_len: %d\t msg: %zd\n", msg_len, strlen(msg));
-
+            // test code
+            // printf("\nmsg_len: %zd\n", strlen(msg));
         printf("\n%s", msg);
-        // fputs(msg, stdout);
 
-        memset(msg, 0, 200);
+        free(msg);
     }
 
-    free(msg);
     return NULL;
 }
 
@@ -238,12 +217,15 @@ void print_client_info()
 }
 
 
-/* 에러 처리 */
-void error_handling(char *msg)
+void add_current_time(char* str)
 {
-    fputs(msg, stderr);
-    fputc('\n', stderr);
-    exit(1);
+    time_t timer = time(NULL);
+    t = localtime(&timer);
+    sprintf(current_time, " (%d/%d/%d  %02d:%02d:%02d)\n"   , t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+                                                           t->tm_hour + 9,    t->tm_min,     t->tm_sec);
+    strcat(str, current_time);
+    strcat(str, reset_font);
+    strcat(str, "\n");
 }
 
 
@@ -255,14 +237,7 @@ void make_entrance_msg(char* entrance_msg)
     strcat(entrance_msg, temp);
     free(temp);
 
-    // add current time 
-    time_t timer = time(NULL);
-    t = localtime(&timer);
-    sprintf(current_time, " (%d/%d/%d  %02d:%02d:%02d)\n"   , t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
-                                                           t->tm_hour + 9,    t->tm_min,     t->tm_sec);
-    strcat(entrance_msg, current_time);
-    strcat(entrance_msg, reset_font);
-    strcat(entrance_msg, "\n");
+    add_current_time(entrance_msg);
 }
 
 
@@ -275,14 +250,7 @@ void make_exit_msg(char* exit_msg)
     strcat(exit_msg, temp);
     free(temp);
 
-    // add current time 
-    time_t timer = time(NULL);
-    t = localtime(&timer);
-    sprintf(current_time, " (%d/%d/%d  %02d:%02d:%02d)\n", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
-                                                           t->tm_hour + 9,    t->tm_min,     t->tm_sec);
-    strcat(exit_msg, current_time);
-    strcat(exit_msg, reset_font);
-    strcat(exit_msg, "\n");
+    add_current_time(exit_msg);
 }
 
 
