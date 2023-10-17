@@ -1,9 +1,7 @@
 #include "chat.h"
 // #include <termios.h>    // to turn off echo in terminal
 
-// void *send_msg(void *arg);
 void *send_msg(void *sock);
-// void *recv_msg(void *arg);
 void *recv_msg(void *sock);
 void print_client_info();
 void *send_exit_msg(int sock);
@@ -13,7 +11,7 @@ void make_exit_msg(char* msg);
 size_t encrypt_msg(uint8_t plain[], uint8_t result[]);
 void add_current_time(char* str);
 void clear_buffer();
-// void int_handler(int sig);
+void int_handler(int sig);
 
 char name[LEN_LIMIT];
 char server_port[LEN_LIMIT];
@@ -79,24 +77,38 @@ int main(int argc, char *argv[])
 /* 메시지 전송 */
 void *send_msg(void *arg)
 {
-    uint8_t i;
+    // int ret;
     int sock = *((int *)arg);
-    char dialog_msg[200];
+    char dialog_msg[MSG_LEN_LIMIT + 40];
+    // char* dialog_msg = (char*) calloc(MSG_LEN_LIMIT * 2, sizeof(char));
+    size_t i;
 
     printf("┌───────────────── Eglobal Talk ─────────────────┐\n");
     send_entrance_msg(sock);
 
     while (1)
     {
+        // // catch 'Ctrl + C'
+        // signal(sig, SIG_IGN);
+        //         printf("ctrl c detected !!\n");
+        
+
         char* msg = (char*)calloc(MSG_LEN_LIMIT + 1, sizeof(char));
         scanf(" %[^\n]s", msg);     // [^\n] = \n이 나오기 전 까지 모든 문자열을 받겠다는 의미.
+        // ret = scanf(" %[^\n]s", msg);
         msg[strlen(msg)] = '\n';
         clear_buffer();
 
+        if (strlen(msg) <= 0) {
+            printf("[ERROR] msg input error !!\n");
+            exit(1);
+        }
+
         // client exit 처리
+        // if (ret == EOF || strcmp(msg, "X\n") == 0) {
         if (strcmp(msg, "X\n") == 0) {
-                // // test code
-                // printf("[TEST] client exit occured!\n");
+                // test code
+                printf("\033[0;31m채팅을 종료합니다.\n\033[0m");
             break;
         }
 
@@ -107,31 +119,45 @@ void *send_msg(void *arg)
         // #1. AES-256 Encryption
         uint8_t* encrypted_msg = (uint8_t*) calloc(MSG_LEN_LIMIT + AES_BLOCKLEN, sizeof(uint8_t));
         size_t enc_len = encrypt_msg(dialog_msg, encrypted_msg);
-                // test code
-                printf("-----------------------------------------------------------------------");
-                printf("\033[0;32m\n[암호화 길이] = %zd\n", enc_len);
-                printf("[암호화 결과] = ");
-                for (i=0; i<enc_len; i++) {
-                    printf("%02hhx ", encrypted_msg[i]);
-                }
-                printf("\n-----------------------------------------------------------------------\n");
-
+                // // test code
+                // printf("-----------------------------------------------------------------------");
+                // printf("\033[0;32m\n[암호화 길이] = %zd\n", enc_len);
+                // printf("[암호화 결과] = ");
+                // for (i=0; i<enc_len; i++) {
+                //     printf("%02hhx ", encrypted_msg[i]);
+                // }
+                // printf("\n-----------------------------------------------------------------------\n");
 
         // #2. Base64 Encoding
         char* base64_msg = (char*) calloc(MSG_LEN_LIMIT, sizeof(char));
-        int ret = base64_encoder(encrypted_msg, enc_len, base64_msg, MSG_LEN_LIMIT);
+        int msg_len = base64_encoder(encrypted_msg, enc_len, base64_msg, MSG_LEN_LIMIT);
                 // test code
-                if (ret <= 0) printf("[base64 encoding ERROR!!!]");
-                else {
-                    printf("[인코딩 길이] = %d\n", ret);
-                    printf("[인코딩 결과] = %s\n\033[0m", base64_msg);
-                }
-                printf("-----------------------------------------------------------------------\n");
+                if (msg_len <= 0) printf("[base64 encoding ERROR!!!]");
+                // else {
+                    // test code
+                    // printf("[인코딩 길이] = %d\n", msg_len);
+                    // printf("[인코딩 결과] = %s\n", base64_msg);
+                // }
+                // printf("-----------------------------------------------------------------------\n");
 
-        write(sock, base64_msg, ret);
+        base64_msg[msg_len] = msg_len;  // 길이 정보를 끝에 추가
+                // test code
+                // printf("[TEST] send msg length= %d...\n", (int)base64_msg[msg_len]);
+
+        ssize_t written_bytes = write(sock, base64_msg, msg_len + 1);
+
+                // test code
+                if (written_bytes == -1) {
+                    printf("[ERROR] send fail !!\n");
+                }
+                // else {
+                    // printf("[TEST] send [%zd] bytes...\n\033[0m", written_bytes);
+                // }
+                // printf("-----------------------------------------------------------------------\n");
 
         free(encrypted_msg);
         free(base64_msg);
+        // free(dialog_msg);
         free(msg);
     }
 
@@ -156,7 +182,7 @@ void *send_entrance_msg(int sock)
 // 클라이언트 퇴장 메시지
 void *send_exit_msg(int sock)
 {
-    char* exit_flag = "exit";
+    char* exit_flag = "exitflag";
     write(sock, exit_flag, strlen(exit_flag));
 
     // write(sock, NULL, 1);
@@ -182,20 +208,33 @@ void *send_exit_msg(int sock)
 /* 메시지 수신 */
 void *recv_msg(void *arg)
 {
-    int msg_len;
+    ssize_t i;
     int sock = *((int *)arg);
 
     while (1)
     {
-        char* msg = (char*)calloc(MSG_LEN_LIMIT, sizeof(char));
-        msg_len = read(sock, msg, MSG_LEN_LIMIT - 1);
+        char* msg = (char*)malloc(MSG_LEN_LIMIT);
+	    memset(msg, 0x00, MSG_LEN_LIMIT);
+        ssize_t msg_len = read(sock, msg, MSG_LEN_LIMIT - 1);
         if (msg_len == -1) {
+            printf("[ERROR] read msg fail!!\n");
             return (void*)-1;   // msg recv error
         }
-        msg[msg_len] = 0;       // EOF 표시
-            // test code
-            // printf("\nmsg_len: %zd\n", strlen(msg));
-        printf("\n%s", msg);
+        // msg[msg_len] = 0x00;       // EOF 표시
+        //     // test code
+        //     printf("\nmsg_len: %zd\n", msg_len);
+        //     printf("strlen(msg)= %ld\n", strlen(msg));
+
+        puts(msg);
+
+        // TODO: 엄청난 white space가 출력되는 문제 !!!!
+	    // printf("%s\n", msg );
+        // puts(msg);
+        // for (i=0; i<msg_len; i++) {     // 한 글자씩 (길이만큼) 출력하는데 sleep 걸어서 걸리는 시간 보기
+        //     printf("%c", msg[i]);
+        //     fflush(stdout);
+        //     usleep(10000); // 0.01s
+        // }
 
         free(msg);
     }
@@ -221,8 +260,8 @@ void add_current_time(char* str)
 {
     time_t timer = time(NULL);
     t = localtime(&timer);
-    sprintf(current_time, " (%d/%d/%d  %02d:%02d:%02d)\n"   , t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
-                                                           t->tm_hour + 9,    t->tm_min,     t->tm_sec);
+    sprintf(current_time, " (%d/%d/%d  %02d:%02d:%02d)"   , t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+                                                            t->tm_hour + 9,    t->tm_min,     t->tm_sec);
     strcat(str, current_time);
     strcat(str, reset_font);
     strcat(str, "\n");

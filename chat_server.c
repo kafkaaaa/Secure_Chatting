@@ -2,8 +2,7 @@
 #include <netinet/in.h>
 
 void *handle_cilent(void *arg);
-// void send_msg(char *msg, size_t msg_len);
-void send_msg(char *msg, ssize_t msg_len);
+void send_msg(char *msg, size_t msg_len);
 void send_entrance_msg(char *msg);
 void send_exit_msg(char *msg);
 void error_handling(char *msg);
@@ -96,7 +95,7 @@ int main(int argc, char *argv[])    // argc= argument count,   argv= argument va
         pthread_create(&t_id, NULL, handle_cilent, (void *)&client_socket);
         pthread_detach(t_id);
 
-                                            // inet_nota  = IPv4 -> ASCII
+                                            // inet_ntoa  = IPv4 -> ASCII
         printf("[New Connect !] client(%s)  ", inet_ntoa(client_addr.sin_addr));
 
         // add current time
@@ -118,34 +117,50 @@ void *handle_cilent(void *arg)
 {
     int client_socket = *((int *)arg);
     int i, msg_len = 0;
-    char msg[200];
+    // char msg[200];
+    char* msg = (char*) calloc(MSG_LEN_LIMIT + 1, sizeof(char));
 
     // 처음 입장할 때 알림 메시지
-    msg_len = read(client_socket, msg, sizeof(msg));
+    // msg_len = read(client_socket, msg, sizeof(msg));
+    msg_len = read(client_socket, msg, MSG_LEN_LIMIT);
+    if (msg_len == -1) {
+        printf("[ERROR] msg read ERROR !!\n");
+        return NULL;
+    }
     send_entrance_msg(msg);
+    memset(msg, 0, MSG_LEN_LIMIT + 1);
+
 
     // 메시지 받아서 전송
     while (1) {
-        char* normal_msg = (char*)calloc(MSG_LEN_LIMIT, sizeof(char));
-        ssize_t msg_len = read(client_socket, normal_msg, MSG_LEN_LIMIT - 1);
+        char* normal_msg = (char*)calloc(MSG_LEN_LIMIT + 1, sizeof(char));
+        ssize_t recv_bytes = read(client_socket, normal_msg, MSG_LEN_LIMIT);
+        int msg_len = (int)normal_msg[strlen(normal_msg) - 1];    // last 1byte = length of msg data.
+        normal_msg[msg_len] = 0;
                 // // test code
-                // printf("[TEST] msg_len= %d\n", msg_len);
-        // if (normal_msg == NULL) {   // client exit
-        // if (normal_msg == "exit") {   // client exit
+                // printf("\n-----------------------------------------------------------------------\n");
+                // printf("\033[0;32m[TEST] recv [%zd] bytes...\n", recv_bytes);
+                // // printf("[TEST] strlen(normal_msg)= [%zd] bytes...\n", strlen(normal_msg));
+                // printf("[TEST] actual_msg_len= %d\n", msg_len);     // 1byte 길이정보 제외
+                // printf("-----------------------------------------------------------------------\n");
+
+                // if (normal_msg == NULL) {   // client exit
+                // if (normal_msg == "exit") {   // client exit
 
 
         // if (msg_len < AES_BLOCKLEN) {   // client exit
-        if (strncmp(normal_msg, "exit", 4) == 0) {   // client exit
+        if (strncmp(normal_msg, "exitflag", 8) == 0) {   // client exit
                 // // test code
                 // printf("[TEST] client exit occur !\n");
             break;
         }
-        if (msg_len == -1 || msg_len == 0) { // ERROR or EOF
-            break;
-        }
+
+        // if (msg_len == -1 || msg_len == 0) { // ERROR or EOF
+        //     break;
+        // }
 
         send_msg(normal_msg, msg_len);
-        free(normal_msg);
+        memset(normal_msg, 0, MSG_LEN_LIMIT + 1);
     }
 
 
@@ -154,16 +169,10 @@ void *handle_cilent(void *arg)
     char* exit_msg = (char*)calloc(MSG_LEN_LIMIT, sizeof(char));
     msg_len = read(client_socket, exit_msg, MSG_LEN_LIMIT - 1);
     printf("%s\n", exit_msg);
-
-    if (msg_len <= 0) {
-        printf("\n**message read ERROR**\n");
-    }
-    else {
+    send_exit_msg(exit_msg);
             // // test code
             // printf("exit_msg_len= %d, exit_msg= %s\n", msg_len, exit_msg);
-        send_exit_msg(exit_msg);
-    }
-    free(exit_msg);
+
 
     pthread_mutex_lock(&mutex);
     for (i = 0; i < client_cnt; i++)
@@ -179,8 +188,8 @@ void *handle_cilent(void *arg)
     printf("[현재 인원: %d / %d명]\n\n", client_cnt, MAX_CLIENT_NUM);
     pthread_mutex_unlock(&mutex);
 
+    free(exit_msg);
     close(client_socket);
-
     return NULL;
 }
 
@@ -192,18 +201,17 @@ void send_entrance_msg(char* msg)
             // // test code
             // printf("strlen(msg)= %zd\n", msg_len);
     
-    pthread_mutex_lock(&mutex);
-
+    // record to log file
     chat_log_fp = fopen(CHAT_LOG_FNAME, "a");
     if (fwrite(msg, sizeof(char), msg_len, chat_log_fp) != msg_len) {
         printf("[ERROR] write log file\n");
     }
     fflush(chat_log_fp);
 
+    pthread_mutex_lock(&mutex);
     for (i=0; i<client_cnt; i++) {      // broadcast to all clients
         write(client_sockets[i], msg, msg_len);
     }
-
     pthread_mutex_unlock(&mutex);
 }
 
@@ -214,50 +222,38 @@ void send_exit_msg(char* msg)
     size_t msg_len = strlen(msg);
         // // test code
         // printf("exit msg: %s\nlen: %d\n", msg, len);
+
     pthread_mutex_lock(&mutex);
-
-    chat_log_fp = fopen(CHAT_LOG_FNAME, "a");
-    if (fwrite(msg, sizeof(char), msg_len, chat_log_fp) != msg_len) {
-        printf("[ERROR] write log file\n");
-    }
-    fflush(chat_log_fp);
-
     for (i=0; i<client_cnt; i++) {      // broadcast to all clients
         write(client_sockets[i], msg, msg_len);
     }
     client_cnt--;
     // printf("%s\n", msg);
     pthread_mutex_unlock(&mutex);
+
+    // record to log file
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "a");
+    if (fwrite(msg, sizeof(char), msg_len, chat_log_fp) != msg_len) {
+        printf("[ERROR] write log file\n");
+    }
+    fflush(chat_log_fp);
 }
 
 
-// void send_msg(char *msg, size_t msg_len)
-void send_msg(char *msg, ssize_t msg_len)
+void send_msg(char *msg, size_t msg_len)
 {
     int i, j;
-
-    // record chatting msg in log file 
-    chat_log_fp = fopen(CHAT_LOG_FNAME, "a");
-    if (chat_log_fp == NULL) {
-        printf("[ERROR] fail to open log file !!\n");
-    }
-    strcat(msg, "\n");
-    fwrite(msg, sizeof(uint8_t), msg_len + 1, chat_log_fp);
-    fflush(chat_log_fp);
-
-    pthread_mutex_lock(&mutex);
+    int origin_text_len = 0;
 
     // Base64 Encoded text -> #1. Base64 Decoding -> Binary -> #2. AES Decryption -> origin text
         // #1. Base64 Decoding
-        char base64_msg[MSG_LEN_LIMIT] = {0, };
-        char decoded_msg[MSG_LEN_LIMIT] = {0, };
-        char origin_msg[MSG_LEN_LIMIT] = {0, };
+        char* base64_msg = (char*)calloc(MSG_LEN_LIMIT, sizeof(char));
+        char* decoded_msg = (char*)calloc(MSG_LEN_LIMIT, sizeof(char));
+        char* origin_msg = (char*)calloc(MSG_LEN_LIMIT, sizeof(char));
 
         int decoded_len = base64_decoder(msg, strlen(msg), decoded_msg, MSG_LEN_LIMIT);
-        // base64_decoder(msg, msg_len, decoded_msg, MSG_LEN_LIMIT);
-                // // test code
+                // test code
                 // printf("\n-----------------------------------------------------------------------\n");
-                // // printf("\033[0;32m[디코딩 대상] = %s\n", decoded_msg);
                 // printf("\033[0;32m[디코딩 대상] = %s\n", msg);
                 // printf("[디코딩 결과] = ");
                 // // for (j=0; j<strlen(decoded_msg); j++) {
@@ -266,29 +262,65 @@ void send_msg(char *msg, ssize_t msg_len)
                 // }
                 // puts("");
 
-
-
         // #2. AES Decryption
         decrypt_msg(decoded_msg, decoded_len, origin_msg);
-                // // test code
-                // // printf("[복호화 길이] = %zd\n", strlen(decoded_msg));
+                // test code
                 // printf("[복호화 길이] = %d\n", decoded_len);
-                // // if (strlen(origin_msg) == 0) {
-                // if (origin_msg == NULL) {
-                //     printf("\033[1;31m[복호화 오류 !!!]\n");
-                // }
-                // else {
-                //     // printf("[test] origin_msg_len = %zd\n", strlen(origin_msg));
-                //     printf("[복호화 결과] = %s\033[0m", origin_msg);
-                // }
-                // printf("\n-----------------------------------------------------------------------\n");
+                if (origin_msg == NULL) {
+                    printf("\033[1;31m[복호화 오류 !!!]\n\033[0m");
+                }
+                else {
+                    // printf("[복호화 결과] = ");
+                    /* count the length of actual plain text */
+                    for (i=0; i<decoded_len; i++) {
+                        origin_text_len++;
+                        printf("%c", origin_msg[i]);
+                        if (origin_msg[i] == 0x0a) break;
+                    }
+                    // printf("[복호화 결과] = %s\033[0m", origin_msg);
+                    // printf("\033[0m-----------------------------------------------------------------------\n\n");
+                }
 
-    // 채팅방의 모든 client들에게 (복호화된) 메시지 전송
+
+
+
+    // /* delete redundant data before sending to all clients */
+    // for (i = 0; i < (int)strlen(origin_msg); i++) {
+    //     printf("%02hx ", origin_msg[i]);
+    //     origin_text_len++;
+    //     if (origin_msg[i] == 0x0a) break;
+    // }
+    //     // test code
+    //     printf("[TEST] 원래 평문 길이= %d...\n", origin_text_len);
+
+
+
+    // broadcast to all clients
+    // pthread_mutex_lock(&mutex);
     for (i = 0; i < client_cnt; i++) {
-        // write(client_sockets[i], origin_msg, strlen(origin_msg));
-        write(client_sockets[i], origin_msg, decoded_len);
+        // int send_bytes = write(client_sockets[i], origin_msg, decoded_len);
+        int send_bytes = write(client_sockets[i], origin_msg, origin_text_len);
+            // test code
+            // printf("[TEST] send [%d] bytes...\n", send_bytes);
     }
-    pthread_mutex_unlock(&mutex);
+    // pthread_mutex_unlock(&mutex);
+            // // test code
+            // printf("[TEST] decoded_len= %d\n\033[0m", decoded_len);
+            // printf("-----------------------------------------------------------------------\n");
+
+    // record log file 
+    chat_log_fp = fopen(CHAT_LOG_FNAME, "a");
+    if (chat_log_fp == NULL) {
+        printf("[ERROR] fail to open log file !!\n");
+    }
+    strcat(msg, "\n");
+    fwrite(msg, sizeof(uint8_t), msg_len, chat_log_fp);
+    fwrite("\n", sizeof(char), 1, chat_log_fp);
+    fflush(chat_log_fp);
+
+    free(base64_msg);
+    free(decoded_msg);
+    free(origin_msg);
 }
 
 
@@ -326,7 +358,8 @@ void print_server_info(char* port)
 /* AES Decryption */
 void decrypt_msg(char* decoded_msg, int decoded_msg_len, char* result)
 {
-    size_t i;
+    size_t i = 0;
+    size_t actual_data_len = 0;
     // size_t enc_len = strlen(decoded_msg);    // 여기가 문제!! -> 암호화 결과에 00 (0x00)이 있으면 strlen에서 멈춰버림.
     size_t enc_len = decoded_msg_len;           // strlen대신 함수 인자로 길이를 받아버려서 해결
     size_t key_len = strlen(key);
@@ -350,11 +383,12 @@ void decrypt_msg(char* decoded_msg, int decoded_msg_len, char* result)
     AES_CBC_decrypt_buffer(&ctx, decoded_msg, enc_len);
 
     if (enc_len % 16 != 0) {
-        size_t actual_data_len = pkcs7_padding_data_length(decoded_msg, enc_len, AES_BLOCKLEN);
+        pkcs7_padding_data_length(decoded_msg, enc_len, AES_BLOCKLEN);
         memcpy(result, decoded_msg, actual_data_len);
     }
     else {
         memcpy(result, decoded_msg, enc_len);
     }
+
 }
 
