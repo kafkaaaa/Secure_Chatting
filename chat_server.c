@@ -274,7 +274,7 @@ void send_msg(char *msg, size_t msg_len)
                     /* count the length of actual plain text */
                     for (i=0; i<decoded_len; i++) {
                         origin_text_len++;
-                        printf("%c", origin_msg[i]);
+                        // printf("%c", origin_msg[i]);
                         if (origin_msg[i] == 0x0a) break;
                     }
                     // printf("[복호화 결과] = %s\033[0m", origin_msg);

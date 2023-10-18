@@ -11,7 +11,7 @@ void make_exit_msg(char* msg);
 size_t encrypt_msg(uint8_t plain[], uint8_t result[]);
 void add_current_time(char* str);
 void clear_buffer();
-void int_handler(int sig);
+void INThandler(int SIG);
 
 char name[LEN_LIMIT];
 char server_port[LEN_LIMIT];
@@ -20,6 +20,7 @@ char client_ip[LEN_LIMIT];
 
 int client_cnt;
 struct tm *t;
+volatile sig_atomic_t sig_exit_flag = 0;
 
 
 int main(int argc, char *argv[])
@@ -30,6 +31,7 @@ int main(int argc, char *argv[])
     // tm.c_lflag &= ~ECHO; // turn off echo
     // tcsetattr(STDIN_FILENO, TCSANOW, &tm);
     // /* */
+    signal(SIGINT, INThandler);
 
     int sock;
     struct sockaddr_in serv_addr;
@@ -82,35 +84,40 @@ void *send_msg(void *arg)
     char dialog_msg[MSG_LEN_LIMIT + 40];
     // char* dialog_msg = (char*) calloc(MSG_LEN_LIMIT * 2, sizeof(char));
     size_t i;
+    char is_exit;
 
     printf("┌───────────────── Eglobal Talk ─────────────────┐\n");
     send_entrance_msg(sock);
 
     while (1)
     {
-        // // catch 'Ctrl + C'
-        // signal(sig, SIG_IGN);
-        //         printf("ctrl c detected !!\n");
-        
-
+        // signal(SIGINT, INThandler);
         char* msg = (char*)calloc(MSG_LEN_LIMIT + 1, sizeof(char));
+        // fgets(msg, MSG_LEN_LIMIT, stdin);
+        fflush(NULL);
         scanf(" %[^\n]s", msg);     // [^\n] = \n이 나오기 전 까지 모든 문자열을 받겠다는 의미.
         // ret = scanf(" %[^\n]s", msg);
         msg[strlen(msg)] = '\n';
-        clear_buffer();
+
+        // client exit 처리
+        if (sig_exit_flag) {
+            printf("\033[0;31m채팅을 종료합니다.\n");
+            break;
+        }
 
         if (strlen(msg) <= 0) {
             printf("[ERROR] msg input error !!\n");
             exit(1);
         }
 
-        // client exit 처리
-        // if (ret == EOF || strcmp(msg, "X\n") == 0) {
         if (strcmp(msg, "X\n") == 0) {
                 // test code
-                printf("\033[0;31m채팅을 종료합니다.\n\033[0m");
+                // printf("\033[0;31m채팅을 종료합니다.\n\033[0m");
+                printf("\033[0;31m채팅을 종료합니다.\n");
             break;
         }
+        clear_buffer();
+        
 
         /* 일반 대화 메시지 전송(+암호화) 작업 */
         /* plain text -> #1. AES-256 Encryption -> Binary data -> #2. Base64 Encoding */
@@ -348,6 +355,14 @@ size_t encrypt_msg(uint8_t plain[], uint8_t result[])
 
 void clear_buffer() {
     while (getchar() != '\n');
+}
+
+
+// catch 'Ctrl + C'
+void INThandler(int SIG) {
+    signal(SIG, SIG_IGN);
+    printf("\033[0;31m\n[Ctrl + C] detected !!\n");
+    sig_exit_flag = 1;
 }
 
 

@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <signal.h>
+#include <unistd.h>
 #include "AES.h"
 #include "pkcs7_padding.h"
 #include "base64.h"
