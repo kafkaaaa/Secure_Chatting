@@ -1,4 +1,4 @@
-# 📌 Multi-User Chatting Room (AES Encrypted & Base64 Encoded)
+# 📌 Multi-User Chatting Room (AES & Base64)
 
 <img src="https://github.com/kafkaaaa/chat/assets/20926959/ebc9d66d-8e5d-4ee5-80f7-dafdfb5348ab">
 
@@ -28,6 +28,6 @@ $ ./client [IP] [Port] [Name]
 <img src="https://github.com/kafkaaaa/chat/assets/20926959/d887f159-07e6-46a2-9c11-9613e08430c0">
 
 ### Log file
-https://github.com/kafkaaaa/chat/assets/20926959/b3cefef6-dac4-43ef-9cfe-42285cc0309e
+<img src="https://github.com/kafkaaaa/chat/assets/20926959/b3cefef6-dac4-43ef-9cfe-42285cc0309e">
 
 
